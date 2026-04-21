@@ -4,6 +4,7 @@ export type MercenaryClass = '궁수' | '성직자' | '도적' | '마법사' | '
 export type MercenaryGrade = 'D' | 'C' | 'B' | 'A' | 'S'
 export type MercenaryStatus = '대기중' | '파견중' | '부상'
 export type BuildingId = 'hall' | 'barracks' | 'training' | 'tavern' | 'infirmary'
+export type RoomId = '훈련소' | '길드마스터룸' | '식당'
 
 export interface Weapon {
   id: string
@@ -11,12 +12,12 @@ export interface Weapon {
   icon: string
   class: MercenaryClass
   tier: 1 | 2 | 3
-  powerBonus: number    // 기본 전력 보정
-  atkBonus: number      // 공격력 보정
-  trapBonus: number     // 함정해제 보정
-  survBonus: number     // 생존율 보정
-  upgradeCost: number   // 다음 티어 업그레이드 비용 (0 = 최대)
-  raceBonus: Partial<Record<Race, number>>  // 종족별 추가 전력
+  powerBonus: number
+  atkBonus: number
+  trapBonus: number
+  survBonus: number
+  upgradeCost: number
+  raceBonus: Partial<Record<Race, number>>
 }
 
 export interface Traits {
@@ -33,13 +34,13 @@ export interface Mercenary {
   race: Race
   class: MercenaryClass
   grade: MercenaryGrade
-  power: number          // base power (condition-adjusted in calculations)
+  power: number
   element: '불' | '얼음' | '번개' | '자연' | '암흑' | '빛'
   trap_disarm: number
-  condition: number      // 0-100, degrades on quests, recovers idle
+  condition: number
   hp: number
-  cost: number           // hire cost (one-time)
-  deathCost: number      // funeral compensation if killed on quest
+  cost: number
+  deathCost: number
   traits: Traits
   stats: {
     공격력: number
@@ -48,11 +49,11 @@ export interface Mercenary {
     협조성: number
   }
   dailyWage: number
-  favorability: number   // 0-100, 길드장과의 호감도
+  favorability: number
   status: MercenaryStatus
-  weaponId: string       // 장착 무기 ID
-  room: '훈련소' | '길드마스터룸' | '식당'
-  level: number          // 1-10, gained from quests
+  weaponId: string
+  room: RoomId
+  level: number
   experience: number
   expToNext: number
 }
@@ -60,37 +61,37 @@ export interface Mercenary {
 export interface Quest {
   id: string
   name: string
-  difficulty: number     // total effective power needed to reliably succeed
+  difficulty: number
   reward: {
     gold: number
     food: number
     fame: number
-    exp: number          // XP awarded per merc on success
+    exp: number
   }
   description: string
-  slots: number          // max mercs (1-4)
-  minSlots: number       // minimum mercs required to launch
-  duration: number       // days to complete
-  deathRisk: number      // base per-merc death probability on failure
-  conditionDrain: number // condition lost per day while on this quest
-  dailyGoldCost: number  // supply cost deducted each day quest is active
+  slots: number
+  minSlots: number
+  duration: number
+  deathRisk: number
+  conditionDrain: number
+  dailyGoldCost: number
   element: '불' | '얼음' | '번개' | '자연' | '암흑' | '빛'
-  trapFocus: boolean     // true = trap disarm skill matters significantly
+  trapFocus: boolean
 }
 
 export interface ActiveQuest {
   questId: string
   assignedMercIds: string[]
-  completesAt: number   // Unix timestamp ms when quest finishes
-  durationMs: number    // total duration in ms (for progress bar)
+  completesAt: number
+  durationMs: number
 }
 
 export interface GuildBuildings {
-  hall: number       // 1-4: simultaneous quest slots
-  barracks: number   // 1-4: arrival frequency & count
-  training: number   // 1-4: XP multiplier
-  tavern: number     // 1-4: arrival grade quality
-  infirmary: number  // 0-4: condition recovery rate (0 = not built yet)
+  hall: number
+  barracks: number
+  training: number
+  tavern: number
+  infirmary: number
 }
 
 export interface CampaignState {
@@ -99,4 +100,19 @@ export interface CampaignState {
   food: number
   fame: number
   morale: number
+}
+
+export interface SaveSlotData {
+  name: string
+  day: number
+  timestamp: number
+  mercs: Mercenary[]
+  activeQuests: ActiveQuest[]
+  buildings: GuildBuildings
+  campaignState: CampaignState
+  questLog: string[]
+  gateArrivals: Mercenary[]
+  nextArrivalDay: number
+  questPool: string[]
+  roomLevels: Record<string, number>
 }
