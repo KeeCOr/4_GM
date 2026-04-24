@@ -2,7 +2,7 @@ export type Race = '엘프' | '인간' | '드워프' | '수인'
 export type Gender = '남' | '여'
 export type MercenaryClass = '궁수' | '성직자' | '도적' | '마법사' | '전사'
 export type MercenaryGrade = 'D' | 'C' | 'B' | 'A' | 'S'
-export type MercenaryStatus = '대기중' | '파견중' | '부상'
+export type MercenaryStatus = '대기중' | '파견중' | '부상' | '영혼'
 export type BuildingId = 'hall' | 'barracks' | 'training' | 'tavern' | 'infirmary'
 export type RoomId = '훈련소' | '길드마스터룸' | '식당'
 
@@ -31,6 +31,7 @@ export interface Mercenary {
   id: string
   name: string
   age: number
+  ageLockedUntil?: number
   race: Race
   class: MercenaryClass
   grade: MercenaryGrade
@@ -64,7 +65,6 @@ export interface Quest {
   difficulty: number
   reward: {
     gold: number
-    food: number
     fame: number
     exp: number
   }
@@ -77,6 +77,10 @@ export interface Quest {
   dailyGoldCost: number
   element: '불' | '얼음' | '번개' | '자연' | '암흑' | '빛'
   trapFocus: boolean
+  requiredQuestId?: string
+  chainId?: string
+  chainName?: string
+  storyAfter?: { title: string; lines: string[] }
 }
 
 export interface ActiveQuest {
@@ -97,9 +101,9 @@ export interface GuildBuildings {
 export interface CampaignState {
   day: number
   gold: number
-  food: number
   fame: number
   morale: number
+  crystals: number
 }
 
 export interface SaveSlotData {
@@ -112,7 +116,9 @@ export interface SaveSlotData {
   campaignState: CampaignState
   questLog: string[]
   gateArrivals: Mercenary[]
-  nextArrivalDay: number
+  nextArrivalTime: number
+  nextMoraleDropAt: number
   questPool: string[]
   roomLevels: Record<string, number>
+  completedQuestIds: string[]
 }

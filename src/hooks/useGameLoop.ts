@@ -20,13 +20,14 @@ interface GameLoopCallbacks {
   setActiveQuests: React.Dispatch<React.SetStateAction<ActiveQuest[]>>
   setQuestLog: React.Dispatch<React.SetStateAction<string[]>>
   setShowLogModal: React.Dispatch<React.SetStateAction<boolean>>
+  onQuestResult: (success: boolean, deaths: number) => void
 }
 
 export function useGameLoop(refs: GameLoopRefs, callbacks: GameLoopCallbacks) {
   const dataRef = useRef(refs)
   dataRef.current = refs
 
-  const { setMercs, setState, setActiveQuests, setQuestLog, setShowLogModal } = callbacks
+  const { setMercs, setState, setActiveQuests, setQuestLog, setShowLogModal, onQuestResult } = callbacks
 
   const processCompletions = useCallback(() => {
     const now = Date.now()
@@ -34,9 +35,10 @@ export function useGameLoop(refs: GameLoopRefs, callbacks: GameLoopCallbacks) {
     const completed = activeQuests.filter(aq => aq.completesAt <= now)
     if (completed.length === 0) return
 
-    let g = state.gold, f = state.food, fame = state.fame, morale = state.morale
+    let g = state.gold, fame = state.fame, morale = state.morale
     let nextMercs = [...mercs]
     const logs: string[] = []
+    const questResults: Array<{ success: boolean; deaths: number }> = []
 
     for (const aq of completed) {
       const quest = ALL_QUESTS.find(q => q.id === aq.questId)!
@@ -49,9 +51,10 @@ export function useGameLoop(refs: GameLoopRefs, callbacks: GameLoopCallbacks) {
       })
       const assignedMercs = aq.assignedMercIds.map(id => nextMercs.find(m => m.id === id)).filter(Boolean) as Mercenary[]
       const success = Math.random() < calcSuccessRate(quest, aq.assignedMercIds, nextMercs) / 100
+      let questDeaths = 0
 
       if (success) {
-        f += quest.reward.food; fame += quest.reward.fame
+        fame += quest.reward.fame
         morale = Math.min(100, morale + 5)
         const totalWages = assignedMercs.reduce((s, m) => s + (MISSION_PAY_PER_DAY[m.grade] ?? 15) * quest.duration, 0)
         const rewardGold = quest.reward.gold
@@ -59,10 +62,10 @@ export function useGameLoop(refs: GameLoopRefs, callbacks: GameLoopCallbacks) {
         g += guildGold
         const wageFullyPaid = rewardGold >= totalWages
         if (wageFullyPaid) {
-          logs.push(`✅ [${quest.name}] 성공! 길드 +${guildGold}G +${quest.reward.food}식량 +${quest.reward.fame}명성`)
+          logs.push(`✅ [${quest.name}] 성공! 길드 +${guildGold}G +${quest.reward.fame}명성`)
           if (totalWages > 0) logs.push(`💰 급여 전액 지급 (${totalWages}G)`)
         } else {
-          logs.push(`✅ [${quest.name}] 성공! +${quest.reward.food}식량 +${quest.reward.fame}명성`)
+          logs.push(`✅ [${quest.name}] 성공! +${quest.reward.fame}명성`)
           logs.push(`⚠ 보상(${rewardGold}G) < 급여(${totalWages}G): 비례 분배, 길드 수입 없음`)
         }
         const xpGain = Math.round(quest.reward.exp * xpMultiplier(buildings.training))
@@ -98,6 +101,7 @@ export function useGameLoop(refs: GameLoopRefs, callbacks: GameLoopCallbacks) {
             const merc = nextMercs.find(m => m.id === mid); if (!merc) continue
             if (Math.random() < calcMercDeathRisk(quest, merc, party) * 0.35) {
               g -= merc.deathCost; nextMercs = nextMercs.filter(m => m.id !== mid)
+              questDeaths++
               logs.push(`💀 ${merc.name} 성공 중 전사! (소규모 파티) -${merc.deathCost}G`)
             }
           }
@@ -120,7 +124,7 @@ export function useGameLoop(refs: GameLoopRefs, callbacks: GameLoopCallbacks) {
           const merc = nextMercs.find(m => m.id === mid); if (!merc) continue
           if (Math.random() < calcMercDeathRisk(quest, merc, failParty)) {
             g -= merc.deathCost; nextMercs = nextMercs.filter(m => m.id !== mid)
-            deadIds.push(mid); fame = Math.max(0, fame - 2)
+            deadIds.push(mid); fame = Math.max(0, fame - 2); questDeaths++
             logs.push(`💀 ${merc.name} 전사! -${merc.deathCost}G`)
           } else {
             nextMercs = nextMercs.map(m => m.id === mid ? { ...m, status: '부상', hp: Math.max(0, m.hp - 30) } : m)
@@ -133,17 +137,19 @@ export function useGameLoop(refs: GameLoopRefs, callbacks: GameLoopCallbacks) {
       }
       nextMercs = nextMercs.map(m =>
         aq.assignedMercIds.includes(m.id) && m.status === '파견중' ? { ...m, status: '대기중' } : m)
+      questResults.push({ success, deaths: questDeaths })
     }
 
     setMercs(nextMercs)
-    setState({ day: state.day, gold: Math.max(0, g), food: Math.max(0, f), fame: Math.max(0, fame), morale })
+    setState(prev => ({ ...prev, day: state.day, gold: Math.max(0, g), fame: Math.max(0, fame), morale }))
     setActiveQuests(prev => prev.filter(aq => aq.completesAt > now))
     setQuestLog(prev => [...prev, ...logs].slice(-20))
     if (logs.some(l => l.startsWith('✅') || l.startsWith('❌') || l.startsWith('💀'))) setShowLogModal(true)
-  }, [setMercs, setState, setActiveQuests, setQuestLog, setShowLogModal])
+    for (const r of questResults) onQuestResult(r.success, r.deaths)
+  }, [setMercs, setState, setActiveQuests, setQuestLog, setShowLogModal, onQuestResult])
 
   useEffect(() => {
-    const timer = setInterval(processCompletions, 10_000)
+    const timer = setInterval(processCompletions, 2_000)
     return () => clearInterval(timer)
   }, [processCompletions])
 

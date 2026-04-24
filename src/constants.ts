@@ -34,7 +34,7 @@ export const ELEMENT_BG: Record<string, string> = {
 }
 
 export const MISSION_PAY_PER_DAY: Record<string, number> = {
-  D: 15, C: 30, B: 58, A: 100, S: 175,
+  D: 4, C: 10, B: 45, A: 90, S: 160,
 }
 
 export const ARRIVAL_REFRESH_COST = 50
