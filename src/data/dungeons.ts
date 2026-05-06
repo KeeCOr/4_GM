@@ -7,7 +7,7 @@ export const DUNGEON_NAMES = [
 ]
 
 export const DUNGEON_ELEMENT_POOL: ActiveDungeon['element'][] = [
-  '불', '얼음', '번개', '자연', '암흑', '빛',
+  '불', '얼음', '자연', '암흑', '빛',
 ]
 
 /** Dungeon trigger probability by quest tier (0–1) */

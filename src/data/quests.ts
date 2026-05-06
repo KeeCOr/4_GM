@@ -129,9 +129,9 @@ export const ALL_QUESTS: Quest[] = [
     reward: { gold: 260, fame: 13, exp: 62 }
   },
   {
-    id: 'q14', name: '번개 정령 포획', difficulty: 185, slots: 4, minSlots: 2, duration: 3,
-    deathRisk: 0.08, conditionDrain: 18, dailyGoldCost: 8, element: '번개', trapFocus: false,
-    description: '폭주하는 번개 정령을 포획해 마법사 조합에 납품합니다.',
+    id: 'q14', name: '자연 정령 포획', difficulty: 185, slots: 4, minSlots: 2, duration: 3,
+    deathRisk: 0.08, conditionDrain: 18, dailyGoldCost: 8, element: '자연', trapFocus: false,
+    description: '폭주하는 자연 정령을 포획해 마법사 조합에 납품합니다.',
     reward: { gold: 245, fame: 11, exp: 58 }
   },
 
@@ -156,7 +156,7 @@ export const ALL_QUESTS: Quest[] = [
   },
   {
     id: 'q6', name: '밀수단 추적', difficulty: 260, slots: 4, minSlots: 2, duration: 4,
-    deathRisk: 0.12, conditionDrain: 22, dailyGoldCost: 11, element: '번개', trapFocus: false,
+    deathRisk: 0.12, conditionDrain: 22, dailyGoldCost: 11, element: '암흑', trapFocus: false,
     description: '왕국 물자를 횡령한 밀수단을 추적 체포합니다. B급 이상 권장.',
     reward: { gold: 520, fame: 19, exp: 84 },
     chainId: 'shadow', chainName: '밀수의 그림자',
@@ -188,7 +188,7 @@ export const ALL_QUESTS: Quest[] = [
   // ── Tier 4 (difficulty 361~580) — A급 ────────────────────────────────────
   {
     id: 'q17', name: '마법사 탑 잠입', difficulty: 390, slots: 4, minSlots: 2, duration: 5,
-    deathRisk: 0.15, conditionDrain: 26, dailyGoldCost: 16, element: '번개', trapFocus: true,
+    deathRisk: 0.15, conditionDrain: 26, dailyGoldCost: 16, element: '암흑', trapFocus: true,
     description: '마법 함정이 가득한 탑에 잠입해 금지된 마법서를 회수합니다. 마법사와 도적의 조합이 이상적입니다.',
     reward: { gold: 850, fame: 34, exp: 138 }
   },

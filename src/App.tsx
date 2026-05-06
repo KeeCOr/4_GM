@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { initialMercenaries, ALL_QUESTS, generateMercenary, EXP_TO_NEXT, WEAPONS, DEFAULT_WEAPON, RACE_BONUS_DESC } from './data/mercenaries'
+import { initialMercenaries, ALL_QUESTS, generateMercenary, EXP_TO_NEXT, RACE_BONUS_DESC } from './data/mercenaries'
+import { EQUIPMENT_POOL, findEquip, getEquipped, getSetBonuses, powerScore, rollQuestDrop, generateMerchantStock, questTier } from './data/equipment'
+import { createDungeon, DUNGEON_TRIGGER_CHANCE, dungeonFloorDifficulty, dungeonFloorDeathRisk, dungeonFloorGold, dungeonFloorXp } from './data/dungeons'
+import { effPower, combatPower, canTrap, eqAtk, eqTrap, eqSurv } from './utils/power'
 import { StatRadar } from './components/StatRadar'
 import { MercAvatar } from './components/MercAvatar'
-import type { Mercenary, Quest, ActiveQuest, GuildBuildings, CampaignState } from './types'
+import { EquipmentModal } from './components/EquipmentModal'
+import { MerchantPanel } from './components/MerchantPanel'
+import { DungeonPanel } from './components/DungeonPanel'
+import { useMerchant } from './hooks/useMerchant'
+import { useDungeon } from './hooks/useDungeon'
+import { getSprite } from './assets/Character/sprites'
+import bgBase from './assets/BG/BG_Base.jpg'
+import type { Mercenary, Quest, ActiveQuest, GuildBuildings, CampaignState, Equipment, EquipSlot, MerchantState, ActiveDungeon, SaveSlotData } from './types'
 
 // ── Display helpers ────────────────────────────────────────────────────────
 
@@ -11,14 +21,14 @@ const CLASS_ICONS: Record<string, string> = { 전사: '⚔️', 궁수: '🏹', 
 const GRADE_STARS: Record<string, string> = { S: '★★★★★', A: '★★★★', B: '★★★', C: '★★', D: '★' }
 
 // 속성 아이콘·색상
-const ELEMENT_ICON: Record<string, string> = { 불: '🔥', 얼음: '🧊', 번개: '⚡', 자연: '🌿', 암흑: '🌑', 빛: '✨' }
+const ELEMENT_ICON: Record<string, string> = { 불: '🔥', 얼음: '🧊', 자연: '🌿', 암흑: '🌑', 빛: '✨' }
 
 const ELEMENT_COLOR: Record<string, string> = {
-  불: 'text-orange-400', 얼음: 'text-cyan-300', 번개: 'text-yellow-300',
+  불: 'text-orange-400', 얼음: 'text-cyan-300',
   자연: 'text-green-400', 암흑: 'text-purple-400', 빛: 'text-yellow-100'
 }
 const ELEMENT_BG: Record<string, string> = {
-  불: 'rgba(234,88,12,0.25)', 얼음: 'rgba(34,211,238,0.2)', 번개: 'rgba(250,204,21,0.2)',
+  불: 'rgba(234,88,12,0.25)', 얼음: 'rgba(34,211,238,0.2)',
   자연: 'rgba(34,197,94,0.2)', 암흑: 'rgba(147,51,234,0.2)', 빛: 'rgba(253,224,71,0.2)'
 }
 
@@ -35,24 +45,7 @@ const ARRIVAL_REFRESH_COST = 150
 const favEmoji = (fav: number) =>
   fav >= 81 ? '❤️' : fav >= 61 ? '😊' : fav >= 41 ? '😐' : fav >= 21 ? '😒' : '💔'
 
-// ── 무기 헬퍼 ─────────────────────────────────────────────────────────────
-const weaponOf = (m: Mercenary) => WEAPONS.find(w => w.id === m.weaponId)
-const wPow  = (m: Mercenary) => { const w = weaponOf(m); return w ? w.powerBonus + (w.raceBonus[m.race] ?? 0) : 0 }
-const wAtk  = (m: Mercenary) => weaponOf(m)?.atkBonus  ?? 0
-const wTrap = (m: Mercenary) => weaponOf(m)?.trapBonus ?? 0
-const wSurv = (m: Mercenary) => weaponOf(m)?.survBonus ?? 0
-
-// Effective power = 기본전력 + 무기보정 + 컨디션 + 호감도 + 나이 보정
-const effPower = (m: Mercenary) => {
-  if (m.age >= 55) return 0  // 노쇠: 전투 불가
-  const favMod = 1 + (m.favorability - 50) / 500
-  let base = m.power + wPow(m)
-  if (m.age >= 38) {
-    const agePenalty = Math.min(0.50, (m.age - 37) * 0.03)
-    base = Math.round(base * (1 - agePenalty))
-  }
-  return Math.round(base * (0.4 + 0.6 * m.condition / 100) * favMod)
-}
+// effPower, combatPower, canTrap imported from utils/power
 
 function calcChemistryScore(party: Mercenary[]): number {
   if (party.length <= 1) return 70
@@ -64,11 +57,7 @@ function calcChemistryScore(party: Mercenary[]): number {
   const score = avgCoop * 0.55 + (100 - avgEgo) * 0.35 + (synAvg - 1) * 50 - clashPenalty
   return Math.max(0, Math.min(100, Math.round(score)))
 }
-// 전투력 = 컨디션 반영 공격력 (UI 표시용)
-const combatPower = (m: Mercenary) =>
-  Math.round((m.stats.공격력 + wAtk(m)) * (0.4 + 0.6 * m.condition / 100))
-// 함정 해제 능력 보유 직업 (도적·궁수만)
-const canTrap = (m: Mercenary) => m.class === '도적' || m.class === '궁수'
+// combatPower and canTrap imported from utils/power
 
 const condBar = (cond: number) => {
   const pct = cond
@@ -76,6 +65,15 @@ const condBar = (cond: number) => {
   return (
     <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
       <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: col }} />
+    </div>
+  )
+}
+
+const moraleBar = (mor: number) => {
+  const col = mor >= 70 ? '#818cf8' : mor >= 40 ? '#f59e0b' : '#ef4444'
+  return (
+    <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+      <div className="h-full rounded-full transition-all" style={{ width: `${mor}%`, background: col }} />
     </div>
   )
 }
@@ -273,13 +271,7 @@ function calcQuestDurationMs(quest: Quest, assignedMercs: Mercenary[]): number {
   const mult = powerRatio <= 1.0
     ? 1.0
     : Math.max(0.30, 1.0 - (Math.min(powerRatio, 3.0) - 1.0) / 2.0 * 0.70)
-  // ⚡ 번개 속성 일치 용병: 소요시간 추가 단축
-  let elemMult = 1.0
-  if (quest.element === '번개') {
-    const cnt = assignedMercs.filter(m => m.element === '번개').length
-    if (cnt > 0) elemMult = Math.max(0.6, 1 - cnt * 0.12)
-  }
-  return Math.max(5, Math.round(baseMins * mult * elemMult)) * 60 * 1000
+  return Math.max(5, Math.round(baseMins * mult)) * 60 * 1000
 }
 
 // ── Guild Level system ─────────────────────────────────────────────────────
@@ -302,7 +294,7 @@ function masterRoomMaxLevel(fame: number): number {
 
 function MercCard({
   merc, onClick, selected, inParty, showDetail,
-  isDraggable, onDragStart, onDragEnd, isDragging, matchElement
+  isDraggable, onDragStart, onDragEnd, isDragging, matchElement, onEquipClick
 }: {
   merc: Mercenary
   onClick: () => void
@@ -313,7 +305,8 @@ function MercCard({
   onDragStart?: (e: React.DragEvent) => void
   onDragEnd?: () => void
   isDragging?: boolean
-  matchElement?: boolean  // true = element matches current quest
+  matchElement?: boolean
+  onEquipClick?: () => void
 }) {
   const isDeployed = merc.status === '파견중'
   const isInjured = merc.status === '부상'
@@ -358,7 +351,16 @@ function MercCard({
               <span className="text-purple-300">🔧<span className="font-semibold">{merc.trap_disarm}</span></span>
             )}
           </div>
-          {showDetail && <div className="mt-1">{condBar(merc.condition)}</div>}
+          {showDetail && <div className="mt-1 space-y-0.5">{condBar(merc.condition)}{moraleBar(merc.morale ?? 70)}</div>}
+          {showDetail && onEquipClick && (
+            <button
+              className="text-xs mt-1 px-2 py-0.5 rounded"
+              style={{ background: 'rgba(139,92,246,0.2)', color: '#c4b5fd', border: '1px solid rgba(139,92,246,0.3)' }}
+              onClick={e => { e.stopPropagation(); onEquipClick() }}
+            >
+              장비
+            </button>
+          )}
         </div>
         <div className="flex-shrink-0 text-right flex flex-col items-end gap-0.5">
           {isDeployed
@@ -395,7 +397,6 @@ function calcSuccessRate(quest: Quest, assignedIds: string[], allMercs: Mercenar
     switch (m.element) {
       case '불':   rate = Math.min(95, rate + 13); break  // 전투력 폭발적 증가
       case '얼음': rate = Math.min(95, rate + 8);  break  // 컨디션 절약, 안정형
-      case '번개': rate = Math.min(95, rate + 9);  break  // 속도 특화
       case '자연': rate = Math.min(95, rate + 10); break  // 생존·지속 특화
       case '암흑': rate = Math.min(95, rate + 11); break  // 은밀·함정 특화
       case '빛':   rate = Math.min(95, rate + 14); break  // 파티 지원·회복
@@ -408,7 +409,7 @@ function calcSuccessRate(quest: Quest, assignedIds: string[], allMercs: Mercenar
   }
   // 함정 퀘스트: 도적·궁수의 함정해제 합산이 높으면 보너스
   if (quest.trapFocus) {
-    const totalTrap = assigned.filter(m => canTrap(m)).reduce((s, m) => s + m.trap_disarm + wTrap(m), 0)
+    const totalTrap = assigned.filter(m => canTrap(m)).reduce((s, m) => s + m.trap_disarm + eqTrap(m), 0)
     if (totalTrap >= 80) rate = Math.min(95, rate + 10)
     else if (totalTrap >= 50) rate = Math.min(95, rate + 5)
   }
@@ -427,6 +428,19 @@ function calcSuccessRate(quest: Quest, assignedIds: string[], allMercs: Mercenar
   if      (chem >= 80) rate = Math.min(95, rate + 12)
   else if (chem < 40)  rate = Math.max(5,  rate - 18)
   else if (chem < 60)  rate = Math.max(5,  rate - 8)
+  // 같은 종족 시너지: 파티 내 동일 종족 2명 이상 시 보너스
+  const raceCounts = assigned.reduce<Record<string, number>>((acc, m) => {
+    acc[m.race] = (acc[m.race] ?? 0) + 1; return acc
+  }, {})
+  for (const count of Object.values(raceCounts)) {
+    if (count >= 2) rate = Math.min(95, rate + (count - 1) * 5)
+  }
+  // 사기 낮으면 성공률 패널티
+  for (const m of assigned) {
+    const mor = m.morale ?? 70
+    if      (mor < 30) rate = Math.max(5, rate - 15)
+    else if (mor < 50) rate = Math.max(5, rate - 8)
+  }
   return Math.max(5, Math.min(95, rate))
 }
 
@@ -448,22 +462,22 @@ function calcMercDeathRisk(quest: Quest, merc: Mercenary, party: Mercenary[]): n
   // ── 1. 퀘스트 종류별 요구 능력치 ──────────────────
   // 함정/던전형 (conditionDrain ≥ 20): 도적·궁수의 함정해제 능력이 낮으면 위험
   if (quest.conditionDrain >= 20 && canTrap(merc)) {
-    const trapFactor = Math.max(0.5, 1.6 - (merc.trap_disarm + wTrap(merc)) / 35)
+    const trapFactor = Math.max(0.5, 1.6 - (merc.trap_disarm + eqTrap(merc)) / 35)
     risk *= trapFactor
   }
   // 전투형 (deathRisk ≥ 0.12): 공격력이 낮으면 적에게 압도됨
   if (quest.deathRisk >= 0.12) {
-    const atkFactor = Math.max(0.55, 1.45 - (merc.stats.공격력 + wAtk(merc)) / 55)
+    const atkFactor = Math.max(0.55, 1.45 - (merc.stats.공격력 + eqAtk(merc)) / 55)
     risk *= atkFactor
   }
   // 장기 원정형 (duration ≥ 4): 생존율이 시간에 따라 복리로 중요해짐
   if (quest.duration >= 4) {
-    const durFactor = Math.max(0.5, 1.35 - (merc.stats.생존율 + wSurv(merc)) / 75)
+    const durFactor = Math.max(0.5, 1.35 - (merc.stats.생존율 + eqSurv(merc)) / 75)
     risk *= durFactor
   }
 
   // ── 2. 개인 생존율 스탯 (항상 적용) ──────────────
-  risk *= Math.max(0.28, 1 - (merc.stats.생존율 + wSurv(merc)) / 120)
+  risk *= Math.max(0.28, 1 - (merc.stats.생존율 + eqSurv(merc)) / 120)
   // ── 2b. 심각한 컨디션 패널티 ─────────────────────
   if      (merc.condition < 20) risk *= 4.0
   else if (merc.condition < 35) risk *= 2.5
@@ -535,23 +549,6 @@ function calcMercDeathRisk(quest: Quest, merc: Mercenary, party: Mercenary[]): n
 
 // ── Save System ────────────────────────────────────────────────────────────
 
-interface SaveSlotData {
-  name: string
-  day: number
-  timestamp: number
-  mercs: Mercenary[]
-  activeQuests: ActiveQuest[]
-  buildings: GuildBuildings
-  campaignState: CampaignState
-  questLog: string[]
-  gateArrivals: Mercenary[]
-  nextArrivalTime: number
-  nextMoraleDropAt: number
-  questPool: string[]
-  roomLevels: Record<string, number>
-  completedQuestIds: string[]
-}
-
 const SAVE_KEY = 'sma_guild_saves'
 const NUM_SAVE_SLOTS = 3
 
@@ -611,6 +608,62 @@ function App() {
   const [scale, setScale] = useState(() => Math.min(window.innerWidth / 1600, window.innerHeight / 900))
   const [zoomDelta, setZoomDelta] = useState(0)
   const [previewArrival, setPreviewArrival] = useState<Mercenary | null>(null)
+  const [buildingWidth, setBuildingWidth] = useState<number>(() => {
+    try { const v = localStorage.getItem('gm_buildingWidth'); return v ? Number(v) : 58 } catch { return 58 }
+  })
+  const buildingResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
+  const handleBuildingResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault()
+    buildingResizeRef.current = { startX: e.clientX, startWidth: buildingWidth }
+    const onMove = (ev: MouseEvent) => {
+      if (!buildingResizeRef.current) return
+      const dx = ev.clientX - buildingResizeRef.current.startX
+      const effectiveScale = Math.max(0.5, Math.min(1.5, scale + zoomDelta))
+      const pctDelta = (dx / effectiveScale / 1600) * 100
+      setBuildingWidth(w => Math.min(75, Math.max(35, buildingResizeRef.current!.startWidth - pctDelta)))
+    }
+    const onUp = () => {
+      buildingResizeRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+  // ── Room overlay insets (% of building area) — drag-adjustable ───────────
+  const [roomInsets, setRoomInsets] = useState<{ top: number; left: number; right: number; bottom: number }>(() => {
+    try { const v = localStorage.getItem('gm_roomInsets'); return v ? JSON.parse(v) : { top: 4, left: 9, right: 11, bottom: 1 } } catch { return { top: 4, left: 9, right: 11, bottom: 1 } }
+  })
+  const roomResizeRef = useRef<{ edge: 'top'|'left'|'right'|'bottom'; startPos: number; startVal: number } | null>(null)
+  const handleRoomEdgeDrag = (edge: 'top'|'left'|'right'|'bottom') => (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const isVertical = edge === 'top' || edge === 'bottom'
+    roomResizeRef.current = { edge, startPos: isVertical ? e.clientY : e.clientX, startVal: roomInsets[edge] }
+    const onMove = (ev: MouseEvent) => {
+      if (!roomResizeRef.current) return
+      const effectiveScale = Math.max(0.5, Math.min(1.5, scale + zoomDelta))
+      const dim = isVertical ? 900 : 1600
+      const delta = ((isVertical ? ev.clientY : ev.clientX) - roomResizeRef.current.startPos) / effectiveScale / dim * 100
+      const signed = (edge === 'top' || edge === 'left') ? delta : -delta
+      setRoomInsets(prev => ({ ...prev, [edge]: Math.max(0, Math.min(30, roomResizeRef.current!.startVal + signed)) }))
+    }
+    const onUp = () => {
+      roomResizeRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  useEffect(() => {
+    try { localStorage.setItem('gm_buildingWidth', String(buildingWidth)) } catch { /* ignore */ }
+  }, [buildingWidth])
+  useEffect(() => {
+    try { localStorage.setItem('gm_roomInsets', JSON.stringify(roomInsets)) } catch { /* ignore */ }
+  }, [roomInsets])
+
   useEffect(() => {
     const update = () => setScale(Math.min(window.innerWidth / 1600, window.innerHeight / 900))
     window.addEventListener('resize', update)
@@ -618,6 +671,14 @@ function App() {
   }, [])
   const [questPool, setQuestPool] = useState<string[]>(() => drawQuestPool(1, [], 5))
   const [roomLevels, setRoomLevels] = useState<Record<string, number>>({ 길드마스터룸: 1, 훈련소: 1, 식당: 1 })
+  // Equipment / Merchant / Dungeon state
+  const [guildInventory, setGuildInventory] = useState<Equipment[]>([])
+  const [merchantState, setMerchantState] = useState<MerchantState | null>(null)
+  const [activeDungeon, setActiveDungeon] = useState<ActiveDungeon | null>(null)
+  const [showEquipModal, setShowEquipModal] = useState<string | null>(null)
+  const [showMerchant, setShowMerchant] = useState(false)
+  const [showDungeon, setShowDungeon] = useState(false)
+  const [pendingDrop, setPendingDrop] = useState<Equipment | null>(null)
   const [questsCompletedToday, setQuestsCompletedToday] = useState(0)
   const [deathsToday, setDeathsToday] = useState(0)
   const [goalsClaimed, setGoalsClaimed] = useState<Set<string>>(new Set())
@@ -638,6 +699,25 @@ function App() {
   // ── Game logic ───────────────────────────────────
 
   const log = (msg: string) => setQuestLog(prev => [...prev, msg].slice(-20))
+
+  // ── Equipment / Merchant / Dungeon hooks ─────────────────────────────────
+  const { buyFromMerchant } = useMerchant({
+    merchantState,
+    setMerchantState,
+    guildLevel: computeGuildLevel(state.fame),
+    log,
+  })
+
+  const { onFloorCleared, onFloorFailed, abandonDungeon } = useDungeon({
+    activeDungeon,
+    setActiveDungeon,
+    guildInventory,
+    setGuildInventory,
+    log,
+    onReward: (gold, fame) => {
+      setState(prev => ({ ...prev, gold: prev.gold + gold, fame: prev.fame + fame }))
+    },
+  })
 
   const showHint = useCallback((id: string) => {
     if (shownHintsRef.current.has(id)) return
@@ -698,17 +778,66 @@ function App() {
     log(`${merc.name} 해고. (잔여 급여 정산 없음)`)
   }
 
-  const upgradeWeapon = (merc: Mercenary) => {
-    const cur = WEAPONS.find(w => w.id === merc.weaponId)
-    if (!cur || cur.tier >= 3) { log(`${merc.name}의 무기는 이미 최고 등급입니다.`); return }
-    if (cur.upgradeCost <= 0) { log('업그레이드 비용 정보 없음'); return }
-    if (state.gold < cur.upgradeCost) { log(`금화 부족: 무기 업그레이드 불가 (${cur.upgradeCost}G 필요)`); return }
-    const next = WEAPONS.find(w => w.class === cur.class && w.tier === (cur.tier + 1) as 1|2|3)
-    if (!next) { log('다음 티어 무기를 찾을 수 없습니다.'); return }
-    setState(prev => ({ ...prev, gold: prev.gold - cur.upgradeCost }))
-    setMercs(prev => prev.map(m => m.id === merc.id ? { ...m, weaponId: next.id } : m))
-    setSelectedMercDetail(prev => prev?.id === merc.id ? { ...prev, weaponId: next.id } : prev)
-    log(`${merc.name}의 무기: ${cur.icon}${cur.name} → ${next.icon}${next.name} (Tier${cur.tier}→${next.tier}) -${cur.upgradeCost}G`)
+  /** Roll for quest drop and dungeon trigger */
+  const rollQuestExtras = (
+    quest: Quest,
+    success: boolean,
+    existingDungeon: ActiveDungeon | null,
+  ): { drop: Equipment | null; dungeon: ActiveDungeon | null } => {
+    if (!success) return { drop: null, dungeon: null }
+    const drop = rollQuestDrop(quest.difficulty)
+    let dungeon: ActiveDungeon | null = null
+    if (!existingDungeon) {
+      const tier = questTier(quest.difficulty)
+      if (Math.random() < DUNGEON_TRIGGER_CHANCE[tier]) {
+        dungeon = createDungeon(quest.difficulty, tier)
+      }
+    }
+    return { drop, dungeon }
+  }
+
+  const equipItem = (mercId: string, slot: EquipSlot, itemId: string | null) => {
+    setMercs(prev => prev.map(m => {
+      if (m.id !== mercId) return m
+      const oldId = m.equipment[slot]
+      let newInventory = [...guildInventory]
+      if (itemId) newInventory = newInventory.filter(e => e.id !== itemId)
+      if (oldId) {
+        const oldItem = findEquip(oldId)
+        if (oldItem) newInventory = [...newInventory, oldItem]
+      }
+      setGuildInventory(() => newInventory)
+      return { ...m, equipment: { ...m.equipment, [slot]: itemId } }
+    }))
+  }
+
+  const acceptDrop = (item: Equipment) => {
+    if (guildInventory.length >= 40) {
+      log('인벤토리 가득 참 — 전리품 획득 불가')
+      setPendingDrop(null)
+      return
+    }
+    setGuildInventory(prev => [...prev, item])
+    log(`[${item.icon} ${item.name} ${item.grade}등급] 길드 인벤토리에 추가!`)
+    setPendingDrop(null)
+  }
+
+  const rejectDrop = (item: Equipment) => {
+    const candidates = mercs.filter(m => m.status !== '영혼' && m.status !== '파견중')
+    const target = candidates.find(m => {
+      const currentId = m.equipment[item.slot]
+      if (!currentId) return true
+      const current = findEquip(currentId)
+      return current ? powerScore(item) > powerScore(current) : true
+    })
+    if (target && Math.random() < 0.7) {
+      equipItem(target.id, item.slot, item.id)
+      log(`${target.name} 새 장비 [${item.name}] 착용`)
+      setMercs(prev => prev.map(m => m.id === target.id ? { ...m, morale: Math.min(100, (m.morale ?? 70) + 8) } : m))
+    } else {
+      log(`[${item.name}] 소멸`)
+    }
+    setPendingDrop(null)
   }
 
   const assignMerc = (questId: string, slotIdx: number) => {
@@ -856,6 +985,7 @@ function App() {
         const sb = level - m.level
         return { ...m, level, experience: exp, expToNext,
           favorability: Math.min(100, m.favorability + 5),
+          morale: Math.min(100, (m.morale ?? 70) + 10),
           power: m.power + sb * 4,
           trap_disarm: m.trap_disarm + sb * 2,
           stats: { 공격력: m.stats.공격력 + sb * 2, 함정해제: m.stats.함정해제 + sb * 2,
@@ -887,9 +1017,19 @@ function App() {
       if (instSuccessDeadIds.length > 0) {
         morale = Math.max(0, morale - instSuccessDeadIds.length * 5)
         questLines.push(`😔 동료를 잃은 생존자들의 사기와 컨디션이 저하됩니다.`)
+        const deadRaces = instSuccessDeadIds.map(did => nextMercs.find(d => d.id === did)?.race).filter(Boolean) as string[]
         nextMercs = nextMercs.map(m => {
-          if (!aq.assignedMercIds.includes(m.id) || instSuccessDeadIds.includes(m.id) || m.status === '영혼') return m
-          return { ...m, condition: Math.max(0, m.condition - 15 * instSuccessDeadIds.length), favorability: Math.max(0, m.favorability - 5) }
+          if (m.status === '영혼' || instSuccessDeadIds.includes(m.id)) return m
+          const sameRaceCount = deadRaces.filter(r => r === m.race).length
+          const normalCount = instSuccessDeadIds.length - sameRaceCount
+          const moralePenalty = normalCount * 10 + sameRaceCount * 20
+          const condPenalty = aq.assignedMercIds.includes(m.id) ? 15 * instSuccessDeadIds.length : 0
+          const favPenalty = aq.assignedMercIds.includes(m.id) ? 5 : 0
+          return { ...m,
+            condition: Math.max(0, m.condition - condPenalty),
+            favorability: Math.max(0, m.favorability - favPenalty),
+            morale: Math.max(0, (m.morale ?? 70) - moralePenalty),
+          }
         })
       }
     } else {
@@ -902,7 +1042,7 @@ function App() {
         if (!aq.assignedMercIds.includes(m.id)) return m
         const expectedWage = Math.round((MISSION_PAY_PER_DAY[m.grade] ?? 15) * quest.duration * 0.5)
         const wagePenalty = expectedWage > 0 ? Math.min(10, Math.max(2, Math.ceil(expectedWage / 15))) : 2
-        return { ...m, favorability: Math.max(0, m.favorability - 5 - wagePenalty) }
+        return { ...m, favorability: Math.max(0, m.favorability - 5 - wagePenalty), morale: Math.max(0, (m.morale ?? 70) - 8) }
       })
       const failParty = aq.assignedMercIds.map(id => nextMercs.find(m => m.id === id)).filter(Boolean) as Mercenary[]
       const deadIds: string[] = []
@@ -919,9 +1059,19 @@ function App() {
       if (deadIds.length > 0) {
         morale = Math.max(0, morale - deadIds.length * 5)
         questLines.push(`😔 동료를 잃은 생존자들의 사기와 컨디션이 저하됩니다.`)
+        const deadRacesInstFail = deadIds.map(did => nextMercs.find(d => d.id === did)?.race).filter(Boolean) as string[]
         nextMercs = nextMercs.map(m => {
-          if (!aq.assignedMercIds.includes(m.id) || deadIds.includes(m.id) || m.status === '영혼') return m
-          return { ...m, condition: Math.max(0, m.condition - 20 * deadIds.length), favorability: Math.max(0, m.favorability - 3) }
+          if (m.status === '영혼' || deadIds.includes(m.id)) return m
+          const sameRaceCount = deadRacesInstFail.filter(r => r === m.race).length
+          const normalCount = deadIds.length - sameRaceCount
+          const moralePenalty = normalCount * 10 + sameRaceCount * 20
+          const condPenalty = aq.assignedMercIds.includes(m.id) ? 20 * deadIds.length : 0
+          const favPenalty = aq.assignedMercIds.includes(m.id) ? 3 : 0
+          return { ...m,
+            condition: Math.max(0, m.condition - condPenalty),
+            favorability: Math.max(0, m.favorability - favPenalty),
+            morale: Math.max(0, (m.morale ?? 70) - moralePenalty),
+          }
         })
       } else {
         nextMercs = nextMercs.map(m => {
@@ -932,6 +1082,14 @@ function App() {
     }
     nextMercs = nextMercs.map(m =>
       aq.assignedMercIds.includes(m.id) && m.status === '파견중' ? { ...m, status: '대기중' } : m)
+
+    // Quest drop + dungeon trigger
+    const { drop, dungeon: newDungeon } = rollQuestExtras(quest, success, activeDungeon)
+    if (drop) setPendingDrop(drop)
+    if (newDungeon) {
+      setActiveDungeon(newDungeon)
+      questLines.push(`던전 발견! [${newDungeon.name}] ${newDungeon.maxFloor}층 — 건물 패널에서 파견하세요.`)
+    }
 
     const newPage = { questName: quest.name, success, lines: questLines }
     const newPageIdx = battleResults.length
@@ -961,7 +1119,8 @@ function App() {
       mercs, activeQuests, buildings,
       campaignState: state,
       questLog, gateArrivals, nextArrivalTime, nextMoraleDropAt,
-      questPool, roomLevels, completedQuestIds
+      questPool, roomLevels, completedQuestIds,
+      guildInventory, merchantState, activeDungeon,
     }
     setSaveSlots(prev => {
       const next = [...prev]
@@ -977,7 +1136,9 @@ function App() {
     if (!data) return
     setMercs(data.mercs.map(m => {
       const migrated = (m.room === '대장간' as string || m.room === '숙소' as string) ? { ...m, room: '식당' as const } : m
-      return { ...migrated, weaponId: migrated.weaponId ?? DEFAULT_WEAPON[migrated.class] }
+      const legacy = migrated as any
+      const migratedEquip = legacy.equipment ?? { weapon: null, head: null, body: null, accessory: null }
+      return { ...migrated, equipment: migratedEquip }
     }))
     setActiveQuests(data.activeQuests.map((aq: any) => {
       if (typeof aq.completesAt === 'number') return aq as ActiveQuest
@@ -995,6 +1156,9 @@ function App() {
     setQuestPool(data.questPool ?? drawQuestPool(data.buildings.hall, data.activeQuests.map(aq => aq.questId), data.campaignState.fame, loadedCompleted))
     setRoomLevels(data.roomLevels ?? { 길드마스터룸: 1, 훈련소: 1, 식당: 1 })
     setCompletedQuestIds(loadedCompleted)
+    setGuildInventory(data.guildInventory ?? [])
+    setMerchantState(data.merchantState ?? null)
+    setActiveDungeon(data.activeDungeon ?? null)
     setPendingAssign({})
     setSelectedMercId(null)
     setShowSaveModal(false)
@@ -1178,12 +1342,12 @@ function App() {
   }, [])
 
   // ── Real-time quest completion ────────────────────────────────────────────
-  const completionDataRef = useRef({ mercs, state, questLog, buildings, roomLevels, activeQuests, gateArrivals, nextArrivalTime, nextMoraleDropAt, battleResults, completedQuestIds })
-  completionDataRef.current = { mercs, state, questLog, buildings, roomLevels, activeQuests, gateArrivals, nextArrivalTime, nextMoraleDropAt, battleResults, completedQuestIds }
+  const completionDataRef = useRef({ mercs, state, questLog, buildings, roomLevels, activeQuests, gateArrivals, nextArrivalTime, nextMoraleDropAt, battleResults, completedQuestIds, activeDungeon })
+  completionDataRef.current = { mercs, state, questLog, buildings, roomLevels, activeQuests, gateArrivals, nextArrivalTime, nextMoraleDropAt, battleResults, completedQuestIds, activeDungeon }
 
   const processCompletions = useCallback(() => {
     const now = Date.now()
-    const { mercs, state, questLog: _log, buildings, activeQuests, battleResults } = completionDataRef.current
+    const { mercs, state, questLog: _log, buildings, activeQuests, battleResults, activeDungeon: currentDungeon } = completionDataRef.current
     const completed = activeQuests.filter(aq => aq.completesAt <= now)
     if (completed.length === 0) return
 
@@ -1235,6 +1399,7 @@ function App() {
           const sb = level - m.level
           return { ...m, level, experience: exp, expToNext,
             favorability: Math.min(100, m.favorability + 5),
+            morale: Math.min(100, (m.morale ?? 70) + 10),
             power: m.power + sb * 4,
             trap_disarm: m.trap_disarm + sb * 2,
             stats: { 공격력: m.stats.공격력 + sb * 2, 함정해제: m.stats.함정해제 + sb * 2, 생존율: m.stats.생존율 + sb * 2, 협조성: m.stats.협조성 + sb } }
@@ -1265,9 +1430,19 @@ function App() {
         if (successDeadIds.length > 0) {
           morale = Math.max(0, morale - successDeadIds.length * 5)
           questLines.push(`😔 동료를 잃은 생존자들의 사기와 컨디션이 저하됩니다.`)
+          const deadRacesSucc = successDeadIds.map(did => nextMercs.find(d => d.id === did)?.race).filter(Boolean) as string[]
           nextMercs = nextMercs.map(m => {
-            if (!aq.assignedMercIds.includes(m.id) || successDeadIds.includes(m.id) || m.status === '영혼') return m
-            return { ...m, condition: Math.max(0, m.condition - 15 * successDeadIds.length), favorability: Math.max(0, m.favorability - 5) }
+            if (m.status === '영혼' || successDeadIds.includes(m.id)) return m
+            const sameRaceCount = deadRacesSucc.filter(r => r === m.race).length
+            const normalCount = successDeadIds.length - sameRaceCount
+            const moralePenalty = normalCount * 10 + sameRaceCount * 20
+            const condPenalty = aq.assignedMercIds.includes(m.id) ? 15 * successDeadIds.length : 0
+            const favPenalty = aq.assignedMercIds.includes(m.id) ? 5 : 0
+            return { ...m,
+              condition: Math.max(0, m.condition - condPenalty),
+              favorability: Math.max(0, m.favorability - favPenalty),
+              morale: Math.max(0, (m.morale ?? 70) - moralePenalty),
+            }
           })
         }
       } else {
@@ -1280,7 +1455,7 @@ function App() {
           if (!aq.assignedMercIds.includes(m.id)) return m
           const expectedWage = Math.round((MISSION_PAY_PER_DAY[m.grade] ?? 15) * quest.duration * 0.5)
           const wagePenalty = expectedWage > 0 ? Math.min(10, Math.max(2, Math.ceil(expectedWage / 15))) : 2
-          return { ...m, favorability: Math.max(0, m.favorability - 5 - wagePenalty) }
+          return { ...m, favorability: Math.max(0, m.favorability - 5 - wagePenalty), morale: Math.max(0, (m.morale ?? 70) - 8) }
         })
         const failParty = aq.assignedMercIds.map(id => nextMercs.find(m => m.id === id)).filter(Boolean) as Mercenary[]
         const deadIds: string[] = []
@@ -1297,9 +1472,19 @@ function App() {
         if (deadIds.length > 0) {
           morale = Math.max(0, morale - deadIds.length * 5)
           questLines.push(`😔 동료를 잃은 생존자들의 사기와 컨디션이 저하됩니다.`)
+          const deadRacesFail = deadIds.map(did => nextMercs.find(d => d.id === did)?.race).filter(Boolean) as string[]
           nextMercs = nextMercs.map(m => {
-            if (!aq.assignedMercIds.includes(m.id) || deadIds.includes(m.id) || m.status === '영혼') return m
-            return { ...m, condition: Math.max(0, m.condition - 20 * deadIds.length), favorability: Math.max(0, m.favorability - 3) }
+            if (m.status === '영혼' || deadIds.includes(m.id)) return m
+            const sameRaceCount = deadRacesFail.filter(r => r === m.race).length
+            const normalCount = deadIds.length - sameRaceCount
+            const moralePenalty = normalCount * 10 + sameRaceCount * 20
+            const condPenalty = aq.assignedMercIds.includes(m.id) ? 20 * deadIds.length : 0
+            const favPenalty = aq.assignedMercIds.includes(m.id) ? 3 : 0
+            return { ...m,
+              condition: Math.max(0, m.condition - condPenalty),
+              favorability: Math.max(0, m.favorability - favPenalty),
+              morale: Math.max(0, (m.morale ?? 70) - moralePenalty),
+            }
           })
         } else {
           // 사망 없이 실패 — 컨디션 소폭 감소
@@ -1311,6 +1496,13 @@ function App() {
       }
       nextMercs = nextMercs.map(m =>
         aq.assignedMercIds.includes(m.id) && m.status === '파견중' ? { ...m, status: '대기중' } : m)
+
+      const { drop: timedDrop, dungeon: timedDungeon } = rollQuestExtras(quest, success, currentDungeon)
+      if (timedDrop) setPendingDrop(timedDrop)
+      if (timedDungeon) {
+        setActiveDungeon(timedDungeon)
+        questLines.push(`던전 발견! [${timedDungeon.name}] ${timedDungeon.maxFloor}층 — 건물 패널에서 파견하세요.`)
+      }
 
       logs.push(success ? `✅ [${quest.name}] 성공!` : `❌ [${quest.name}] 실패!`, ...questLines)
       perQuestPages.push({ questName: quest.name, success, lines: questLines })
@@ -1492,9 +1684,9 @@ function App() {
         const step = INTRO_STEPS[tutorialStep]
         const isLast = tutorialStep === INTRO_STEPS.length - 1
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/92 p-4">
-            <div className="w-full max-w-lg rounded-2xl overflow-hidden flex flex-col"
-              style={{ background: '#0d0b1c', border: '1px solid rgba(120,80,200,0.35)', boxShadow: '0 0 60px rgba(80,40,160,0.2)', maxHeight: '85vh' }}>
+          <div className="fixed z-50 p-0" style={{ left: 8, top: 100, width: 300 }}>
+            <div className="w-full rounded-2xl overflow-hidden flex flex-col"
+              style={{ background: 'rgba(10,8,22,0.97)', border: '1px solid rgba(120,80,200,0.45)', boxShadow: '0 0 40px rgba(60,30,140,0.35)', maxHeight: 'calc(100vh - 72px)' }}>
 
               {/* Progress dots */}
               <div className="flex justify-center gap-2 pt-4 pb-1 flex-shrink-0">
@@ -1586,7 +1778,7 @@ function App() {
         ]
         return (
           <div className="fixed z-20 rounded-xl overflow-hidden"
-            style={{ right: 8, top: 56, width: 160, background: 'rgba(4,4,12,0.88)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            style={{ right: 8, top: 56, width: 160, background: 'rgba(12,8,3,0.92)', border: '1px solid rgba(200,150,50,0.25)', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
             <div className="px-2.5 py-1.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.03)' }}>
               <p className="text-xs font-bold" style={{ color: 'rgba(251,191,36,0.8)' }}>🎯 일일 목표</p>
             </div>
@@ -1647,7 +1839,7 @@ function App() {
 
       {/* ── Header ───────────────────────────────────── */}
       <header className="sticky top-0 z-40 flex items-center gap-3 px-4 border-b backdrop-blur-xl"
-        style={{ background: 'rgba(6,6,14,0.97)', borderColor: 'rgba(255,255,255,0.06)', height: 48 }}>
+        style={{ background: 'rgba(14,9,4,0.97)', borderColor: 'rgba(180,130,50,0.25)', height: 48 }}>
         {/* 타이틀 */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="text-lg">🏰</span>
@@ -1725,36 +1917,25 @@ function App() {
 
       {/* ── Scene ─────────────────────────────────────── */}
       <div className="relative overflow-hidden flex-1" style={{ minHeight: 0 }}>
-        {/* Sky */}
+        {/* Background Image */}
         <div className="absolute inset-0" style={{
-          background: 'linear-gradient(180deg,#03030a 0%,#08062a 25%,#160840 55%,#2d1205 80%,#0a0400 100%)'
+          backgroundImage: `url(${bgBase})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center top',
         }} />
-        {stars.map((s, i) => (
-          <div key={i} className="absolute rounded-full bg-white pointer-events-none"
-            style={{ left: `${s.left}%`, top: `${s.top}%`, width: `${s.size}px`, height: `${s.size}px`, opacity: s.opacity }} />
-        ))}
-        {/* Moon */}
-        <div className="absolute pointer-events-none" style={{
-          top: 24, right: 90, width: 48, height: 48, borderRadius: '50%',
-          background: 'radial-gradient(circle at 38% 38%,#fffde0,#e8cc78)',
-          boxShadow: '0 0 30px 14px rgba(232,200,80,0.12)'
+        {/* 좌측 외부(외경) 어둡게, 우측 내부 살짝 어둡게 */}
+        <div className="absolute inset-0 pointer-events-none" style={{
+          background: 'linear-gradient(90deg, rgba(0,0,0,0.28) 0%, rgba(0,0,0,0.05) 42%, rgba(0,0,0,0.18) 100%)'
         }} />
-        {/* Ground */}
-        <div className="absolute bottom-0 left-0 right-0 pointer-events-none" style={{
-          height: 60, background: 'linear-gradient(0deg,#0d0702 40%,transparent 100%)'
-        }} />
-        {/* Road */}
-        <div className="absolute pointer-events-none" style={{
-          bottom: 14, left: 0, right: '44%', height: 50,
-          background: 'linear-gradient(180deg,#3a2616,#261508)',
-          borderTop: '2px solid #5a3820'
-        }} />
+        {/* 상단 및 하단 그라데이션 — UI 가독성 */}
+        <div className="absolute inset-x-0 top-0 pointer-events-none" style={{ height: 60, background: 'linear-gradient(180deg,rgba(0,0,0,0.5) 0%,transparent 100%)' }} />
+        <div className="absolute inset-x-0 bottom-0 pointer-events-none" style={{ height: 80, background: 'linear-gradient(0deg,rgba(0,0,0,0.55) 0%,transparent 100%)' }} />
 
         {/* ── Top-left buttons ── */}
         <div className="absolute flex gap-1.5" style={{ left: 10, top: 8, zIndex: 10 }}>
           <button onClick={() => setShowQuestModal(true)}
             className="rounded-xl px-3 py-1.5 text-sm font-bold text-white transition-all hover:brightness-115 active:scale-95 relative"
-            style={{ background: 'linear-gradient(135deg,#1e3a5f,#1d4ed8)', border: '1px solid rgba(59,130,246,0.55)', backdropFilter: 'blur(8px)' }}>
+            style={{ background: 'linear-gradient(135deg,rgba(20,45,90,0.92),rgba(20,60,180,0.88))', border: '1px solid rgba(80,150,255,0.55)', boxShadow: '0 2px 12px rgba(0,0,0,0.4)' }}>
             📜 계약 관리
             {(activeQuests.length > 0 || Object.keys(pendingAssign).some(k => (pendingAssign[k] ?? []).some(Boolean))) && (
               <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full text-xs font-extrabold flex items-center justify-center text-white"
@@ -1765,97 +1946,68 @@ function App() {
           </button>
           <button onClick={() => setShowMercModal(true)}
             className="rounded-xl px-3 py-1.5 text-sm font-bold text-white transition-all hover:brightness-115 active:scale-95"
-            style={{ background: 'linear-gradient(135deg,#14532d,#166534)', border: '1px solid rgba(34,197,94,0.45)', backdropFilter: 'blur(8px)' }}>
+            style={{ background: 'linear-gradient(135deg,rgba(15,60,30,0.92),rgba(18,80,36,0.88))', border: '1px solid rgba(50,200,100,0.45)', boxShadow: '0 2px 12px rgba(0,0,0,0.4)' }}>
             👥 용병 목록
           </button>
           <button onClick={() => { setBattleResultPage(Math.max(0, battleResults.length - 1)); setShowLogModal(true) }}
             className="rounded-xl px-3 py-1.5 text-sm font-semibold transition-all hover:brightness-115 active:scale-95"
-            style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(180,170,150,0.85)', backdropFilter: 'blur(8px)' }}>
+            style={{ background: 'rgba(30,20,10,0.82)', border: '1px solid rgba(200,160,80,0.3)', color: 'rgba(210,185,140,0.9)', boxShadow: '0 2px 12px rgba(0,0,0,0.4)' }}>
             📋 결과{battleResults.length > 0 && <span className="ml-1 text-xs opacity-60">{battleResults.length}</span>}
           </button>
           <button onClick={refreshArrivals}
             className="rounded-xl px-3 py-1.5 text-sm font-semibold transition-all hover:brightness-115 active:scale-95"
             style={{
-              background: state.gold >= ARRIVAL_REFRESH_COST ? 'rgba(251,191,36,0.1)' : 'rgba(255,255,255,0.04)',
-              border: `1px solid ${state.gold >= ARRIVAL_REFRESH_COST ? 'rgba(180,130,30,0.4)' : 'rgba(255,255,255,0.08)'}`,
-              color: state.gold >= ARRIVAL_REFRESH_COST ? 'rgba(251,191,36,0.85)' : 'rgba(80,60,20,0.4)',
-              backdropFilter: 'blur(8px)'
+              background: state.gold >= ARRIVAL_REFRESH_COST ? 'rgba(40,28,6,0.88)' : 'rgba(20,15,5,0.7)',
+              border: `1px solid ${state.gold >= ARRIVAL_REFRESH_COST ? 'rgba(220,160,40,0.55)' : 'rgba(120,90,30,0.25)'}`,
+              color: state.gold >= ARRIVAL_REFRESH_COST ? 'rgba(255,210,80,0.9)' : 'rgba(100,75,25,0.4)',
+              boxShadow: '0 2px 12px rgba(0,0,0,0.4)'
             }}>
             🔄 용병 ({ARRIVAL_REFRESH_COST}G)
           </button>
         </div>
 
         {/* ── 도착 용병 대기열 (하단 도로에 줄서기) ── */}
-        <div className="absolute flex flex-col gap-1" style={{ left: 0, right: '44%', bottom: 52, zIndex: 10 }}>
-          {/* 라벨 + 새로고침 */}
+        <div className="absolute flex flex-col gap-1" style={{ left: 0, right: `${buildingWidth - 2}%`, bottom: 40, zIndex: 10 }}>
+          {/* 라벨 */}
           <div className="flex items-center gap-2 px-3">
             {gateArrivals.length > 0
               ? <p className="text-xs font-bold tracking-widest" style={{ color: 'rgba(200,140,40,0.8)' }}>✦ 입단 희망자 {gateArrivals.length}명</p>
               : <p className="text-xs" style={{ color: 'rgba(120,90,40,0.5)' }}>🚶 다음 도착 {formatArrivalCountdown(nextArrivalTime, tickTime)}</p>
             }
-            <button onClick={refreshArrivals}
-              className="text-xs rounded px-1.5 py-0.5 font-semibold transition hover:brightness-125 ml-auto"
-              style={{
-                background: state.gold >= ARRIVAL_REFRESH_COST ? 'rgba(251,191,36,0.1)' : 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(180,130,30,0.3)',
-                color: state.gold >= ARRIVAL_REFRESH_COST ? 'rgba(251,191,36,0.8)' : 'rgba(100,70,20,0.4)'
-              }}>
-              🔄 {ARRIVAL_REFRESH_COST}G
-            </button>
           </div>
-          {/* 가로 줄서기 카드 */}
-          <div className="flex gap-1.5 overflow-x-auto px-3 pb-1" style={{ scrollbarWidth: 'none' }}>
+          {/* 가로 줄서기 */}
+          <div className="flex items-end gap-3 overflow-x-auto px-3 pb-1" style={{ scrollbarWidth: 'none' }}>
             {gateArrivals.map((m) => {
-              const ch = activeMercCount < maxHireCap(roomLevels['식당'] ?? 1) && state.gold >= m.cost
+              const sprite = getSprite(m.race, m.traits.gender, m.class)
+              const gradeColor = m.grade === 'S' ? 'rgba(232,121,249,0.95)' : m.grade === 'A' ? 'rgba(251,191,36,0.95)' : m.grade === 'B' ? 'rgba(52,211,153,0.9)' : m.grade === 'C' ? 'rgba(56,189,248,0.85)' : 'rgba(160,160,170,0.8)'
+              const spriteGlow = m.grade === 'S'
+                ? 'drop-shadow(0 0 8px rgba(232,121,249,0.95)) drop-shadow(0 0 18px rgba(232,121,249,0.55))'
+                : m.grade === 'A'
+                ? 'drop-shadow(0 0 7px rgba(251,191,36,0.9)) drop-shadow(0 0 14px rgba(251,191,36,0.5))'
+                : m.grade === 'B'
+                ? 'drop-shadow(0 0 5px rgba(52,211,153,0.7))'
+                : 'none'
               return (
-                <div key={m.id}
-                  className="rounded-lg overflow-hidden flex-shrink-0 flex flex-col"
-                  style={{
-                    width: 90, height: 130,
-                    background: 'rgba(6,4,2,0.92)',
-                    border: `1px solid ${m.grade === 'S' ? 'rgba(217,70,239,0.6)' : m.grade === 'A' ? 'rgba(251,191,36,0.55)' : 'rgba(140,80,20,0.4)'}`,
-                    backdropFilter: 'blur(12px)',
-                  }}>
-                  {/* 초상화 + 정보 */}
-                  <div className="flex flex-col items-center pt-1.5 px-1.5 gap-0.5 flex-1 cursor-pointer hover:brightness-110"
-                    onClick={() => setPreviewArrival(m)}>
-                    <div className="flex items-center gap-1">
-                      <MercAvatar m={m} size={32} />
-                      <span className={`text-xs font-bold px-1 rounded text-white ${gradeBg(m.grade)}`}>{m.grade}</span>
-                    </div>
-                    <p className="text-xs font-bold text-white text-center leading-tight truncate w-full">{m.name}</p>
-                    <div className="flex items-center gap-1 text-xs">
-                      <span className={ELEMENT_COLOR[m.element]}>{ELEMENT_ICON[m.element]}</span>
-                      <span style={{ color: 'rgba(140,110,70,0.9)' }}>{CLASS_ICONS[m.class]}</span>
-                      <span className="text-cyan-300 font-semibold">⚔{m.power}</span>
-                    </div>
-                    <p className="text-xs font-bold" style={{ color: 'rgba(251,191,36,0.85)' }}>
-                      {m.cost === 0 ? '무료' : `${m.cost}G`}
-                    </p>
+                <div key={m.id} className="flex-shrink-0 flex flex-col cursor-pointer hover:brightness-110 transition-all"
+                  style={{ width: 72 }} onClick={() => setPreviewArrival(m)}>
+                  {/* 등급 (이름 위) */}
+                  <div style={{ fontSize: 12, fontWeight: 800, color: gradeColor, padding: '2px 4px 1px', textAlign: 'center', letterSpacing: 1 }}>
+                    {m.grade}
                   </div>
-                  {/* 버튼 행 — 개별 고용/거절 */}
-                  <div className="flex flex-col gap-0.5 px-1.5 pb-1.5" style={{ borderTop: '1px solid rgba(140,80,20,0.2)', paddingTop: 6 }}>
-                    <button onClick={() => ch && hireMerc(m)}
-                      className="w-full rounded text-center font-bold transition hover:brightness-125 active:scale-95"
-                      style={{
-                        height: 26, fontSize: 11,
-                        color: ch ? '#fff' : 'rgba(80,60,20,0.45)',
-                        background: ch ? 'rgba(34,197,94,0.22)' : 'rgba(34,197,94,0.05)',
-                        border: `1px solid ${ch ? 'rgba(34,197,94,0.5)' : 'rgba(34,197,94,0.1)'}`,
-                        cursor: ch ? 'pointer' : 'not-allowed',
-                      }}>
-                      ⚔ 고용
-                    </button>
-                    <button onClick={() => dismissArrival(m.id)}
-                      className="w-full rounded text-center font-bold transition hover:brightness-125 active:scale-95"
-                      style={{
-                        height: 22, fontSize: 11,
-                        color: 'rgba(239,68,68,0.8)',
-                        background: 'rgba(239,68,68,0.08)',
-                        border: '1px solid rgba(239,68,68,0.25)',
-                      }}>
-                      ✕ 거절
-                    </button>
+                  {/* 이름 */}
+                  <p style={{ fontSize: 11, color: '#ede4cc', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%', padding: '0 4px', textAlign: 'center' }}>{m.name}</p>
+                  {/* 속성 + 전투력 */}
+                  <div style={{ fontSize: 10, display: 'flex', gap: 4, padding: '1px 4px 3px', width: '100%', justifyContent: 'center', color: 'rgba(200,200,200,0.8)' }}>
+                    <span>{ELEMENT_ICON[m.element]}</span>
+                    <span style={{ color: '#67e8f9', fontWeight: 700 }}>⚔{m.power}</span>
+                  </div>
+                  {/* 스프라이트 (등급 글로우) */}
+                  <div style={{ position: 'relative', width: 68, height: 84, alignSelf: 'center' }}>
+                    {sprite
+                      ? <img src={sprite} style={{ width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center bottom', filter: spriteGlow }} />
+                      : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', filter: spriteGlow }}><MercAvatar m={m} size={56} /></div>
+                    }
+                    <div style={{ position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: 26, height: 4, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', filter: 'blur(4px)' }} />
                   </div>
                 </div>
               )
@@ -1863,37 +2015,328 @@ function App() {
           </div>
         </div>
 
-        {/* ── Guild Building (right) ── */}
-        <div className="absolute right-0 bottom-0 flex flex-col" style={{ width: '56%', height: '96%' }}>
-          <p className="text-center text-sm font-bold uppercase tracking-widest mb-1 pointer-events-none"
-            style={{ color: 'rgba(251,191,36,0.7)' }}>⚔ 용병단 길드 홀 Lv{buildings.hall} ⚔</p>
-          {/* Battlements */}
-          <div className="flex flex-shrink-0" style={{ height: 30 }}>
-            {Array.from({ length: 14 }).map((_, i) => (
-              <div key={i} className="flex-1" style={{
-                alignSelf: 'flex-end',
-                height: i % 2 === 0 ? 30 : 16,
-                background: i % 2 === 0 ? '#2d3748' : '#1f2937',
-                borderTop: `2px solid ${i % 2 === 0 ? '#4a5568' : '#374151'}`
-              }} />
-            ))}
+        {/* ── Guild Building (right) — 배경 이미지 3층 구조 오버레이 ── */}
+        <div className="absolute right-0 top-0 bottom-0" style={{ width: `${buildingWidth}%` }}>
+          {/* 리사이즈 핸들 — 좌측 가장자리 드래그로 건물 너비 조정 */}
+          <div
+            onMouseDown={handleBuildingResizeStart}
+            className="absolute top-0 bottom-0 z-30 group"
+            style={{ left: 0, width: 10, cursor: 'col-resize' }}
+          >
+            <div className="absolute inset-y-0" style={{
+              left: 3, width: 3,
+              background: 'rgba(200,150,50,0.0)',
+              borderLeft: '2px dashed rgba(200,150,50,0.0)',
+              transition: 'all 0.15s',
+            }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(200,150,50,0.25)'; (e.currentTarget as HTMLElement).style.borderLeftColor = 'rgba(200,150,50,0.6)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(200,150,50,0)'; (e.currentTarget as HTMLElement).style.borderLeftColor = 'rgba(200,150,50,0)' }}
+            />
           </div>
-          {/* Wall */}
-          <div className="flex-1 relative overflow-hidden" style={{
-            borderLeft: '3px solid #4a5568', borderRight: '3px solid #4a5568',
-            background: 'linear-gradient(180deg,#1a2030 0%,#111827 60%,#0d1420 100%)'
-          }}>
-            <div className="absolute inset-0 pointer-events-none" style={{
-              background: 'radial-gradient(ellipse at 50% 30%,rgba(200,110,20,0.15) 0%,transparent 70%)'
-            }} />
-            {/* Torches */}
-            {[12, null, null, null, null, -12].map((pos, i) => pos !== null && (
-              <div key={i} className="absolute pointer-events-none" style={{
-                [pos > 0 ? 'left' : 'right']: Math.abs(pos), top: 10, width: 5, height: 12,
-                background: 'linear-gradient(180deg,#fb923c,#92400e)', borderRadius: 2,
-                boxShadow: '0 0 10px 5px rgba(251,146,60,0.3)'
-              }} />
-            ))}
+          {/* 길드 홀 레벨 배지 */}
+          <div className="absolute top-2 right-3 z-20 pointer-events-none">
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+              style={{ background: 'rgba(0,0,0,0.6)', color: 'rgba(255,210,100,0.95)', border: '1px solid rgba(200,150,50,0.45)' }}>
+              ⚔ 길드 홀 Lv{buildings.hall}
+            </span>
+          </div>
+          {/* 3층 패널 컨테이너 — 드래그 핸들로 위치/크기 조정 가능 */}
+          <div className="absolute flex flex-col" style={{ top: `${roomInsets.top}%`, left: `${roomInsets.left}%`, right: `${roomInsets.right}%`, bottom: `${roomInsets.bottom}%`, gap: '0.8%' }}>
+            {/* 상단 핸들 */}
+            <div onMouseDown={handleRoomEdgeDrag('top')} className="absolute z-40" style={{ top: 0, left: 12, right: 12, height: 8, cursor: 'ns-resize', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: 36, height: 3, borderRadius: 2, background: 'rgba(200,160,60,0.35)' }} />
+            </div>
+            {/* 하단 핸들 */}
+            <div onMouseDown={handleRoomEdgeDrag('bottom')} className="absolute z-40" style={{ bottom: 0, left: 12, right: 12, height: 8, cursor: 'ns-resize', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: 36, height: 3, borderRadius: 2, background: 'rgba(200,160,60,0.35)' }} />
+            </div>
+            {/* 좌측 핸들 */}
+            <div onMouseDown={handleRoomEdgeDrag('left')} className="absolute z-40" style={{ left: 0, top: 12, bottom: 12, width: 8, cursor: 'ew-resize', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: 3, height: 36, borderRadius: 2, background: 'rgba(200,160,60,0.35)' }} />
+            </div>
+            {/* 우측 핸들 */}
+            <div onMouseDown={handleRoomEdgeDrag('right')} className="absolute z-40" style={{ right: 0, top: 12, bottom: 12, width: 8, cursor: 'ew-resize', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: 3, height: 36, borderRadius: 2, background: 'rgba(200,160,60,0.35)' }} />
+            </div>
+
+            {/* ── 3F: 길드마스터룸 (상단 전략실) ── */}
+            {(() => {
+              const room = '길드마스터룸' as const
+              const cap = masterCapacity(roomLevels[room] ?? 1)
+              const occupants = mercs.filter(m => m.room === room && m.status === '대기중' && !pendingMercIds.has(m.id))
+              const roomLv = roomLevels[room] ?? 1
+              const costs = ROOM_UPGRADE_COSTS[room]
+              const canUpgrade = roomLv < 3
+              const upgCost = canUpgrade && costs ? costs[roomLv - 1] : 0
+              const souls = mercs.filter(m => m.status === '영혼')
+              return (
+                <div className="flex-1 min-h-0 rounded-xl overflow-hidden flex flex-col"
+                  style={{ background: 'rgba(10,6,25,0.32)', border: '1px solid rgba(160,110,255,0.35)', boxShadow: '0 2px 12px rgba(80,40,160,0.1)' }}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => { e.preventDefault(); const mid = e.dataTransfer.getData('roomMercId'); if (mid) updateMercRoom(mid, room) }}>
+                  <div className="flex items-center justify-between px-2 py-1 flex-shrink-0"
+                    style={{ background: 'rgba(18,8,42,0.72)', borderBottom: '1px solid rgba(140,90,230,0.25)' }}>
+                    <span className="text-xs font-bold" style={{ color: 'rgba(200,170,255,0.95)' }}>
+                      👑 {room} <span className="opacity-50">Lv{roomLv}</span>
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs" style={{ color: 'rgba(120,180,120,0.7)' }}>{ROOM_EFFECTS[room].desc[roomLv - 1]}</span>
+                      {canUpgrade && (
+                        <button onClick={() => upgradeRoom(room)}
+                          className="text-xs font-bold rounded px-1.5 py-0.5 text-white transition hover:brightness-125"
+                          style={{ background: state.gold >= upgCost ? 'rgba(16,185,129,0.4)' : 'rgba(80,80,80,0.3)', border: '1px solid rgba(16,185,129,0.28)' }}>
+                          ↑{upgCost}G
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto min-h-0">
+                    <div className="flex flex-wrap gap-2 p-2 items-end content-start">
+                      {occupants.slice(0, cap).map(m => {
+                        const isSel = selectedMercId === m.id
+                        const isPend = pendingMercIds.has(m.id)
+                        const sprite = getSprite(m.race, m.traits.gender, m.class)
+                        const spriteGlow = m.grade === 'S'
+                          ? 'drop-shadow(0 0 8px rgba(232,121,249,0.95)) drop-shadow(0 0 18px rgba(232,121,249,0.55))'
+                          : m.grade === 'A'
+                          ? 'drop-shadow(0 0 7px rgba(251,191,36,0.9)) drop-shadow(0 0 14px rgba(251,191,36,0.5))'
+                          : m.grade === 'B'
+                          ? 'drop-shadow(0 0 5px rgba(52,211,153,0.7))'
+                          : 'none'
+                        return (
+                          <div key={m.id} draggable
+                            onDragStart={e => { e.dataTransfer.setData('roomMercId', m.id); e.dataTransfer.setData('mercId', m.id); setDraggingMercId(m.id); setSelectedMercId(m.id) }}
+                            onDragEnd={() => setDraggingMercId(null)}
+                            onClick={() => setSelectedMercId(isSel ? null : m.id)}
+                            role="button" tabIndex={0}
+                            className="flex flex-col items-center transition-all select-none"
+                            style={{ width: 72, cursor: 'grab', opacity: draggingMercId === m.id ? 0.35 : 1, borderRadius: 8,
+                              background: isSel ? 'rgba(251,191,36,0.1)' : isPend ? 'rgba(99,102,241,0.08)' : 'transparent',
+                              outline: isSel ? '1px solid rgba(251,191,36,0.45)' : 'none' }}>
+                            <div style={{ fontSize: 11, fontWeight: 800, color: 'rgba(220,185,100,0.95)', textAlign: 'center', width: '100%', padding: '2px 4px 1px' }}>Lv.{m.level}</div>
+                            <div style={{ width: '100%', padding: '0 4px 3px' }}>
+                              <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 2, overflow: 'hidden' }}>
+                                <div style={{ height: '100%', width: `${Math.min(100, m.expToNext > 0 ? (m.experience / m.expToNext) * 100 : 0)}%`, background: 'rgba(200,160,50,0.85)', borderRadius: 2 }} />
+                              </div>
+                            </div>
+                            <p style={{ fontSize: 11, color: '#ede4cc', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%', padding: '0 4px', textAlign: 'center' }}>{m.name}</p>
+                            <div style={{ fontSize: 10, display: 'flex', gap: 4, padding: '1px 4px 3px', width: '100%', justifyContent: 'center', color: 'rgba(200,200,200,0.8)' }}>
+                              <span>{ELEMENT_ICON[m.element]}</span>
+                              <span style={{ color: '#67e8f9', fontWeight: 700 }}>⚔{m.power}</span>
+                            </div>
+                            <div style={{ position: 'relative', width: 68, height: 84, alignSelf: 'center' }}>
+                              {sprite
+                                ? <img src={sprite} style={{ width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center bottom', filter: spriteGlow, animation: 'gm-report 3s ease-in-out infinite' }} />
+                                : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', filter: spriteGlow, animation: 'gm-report 3s ease-in-out infinite' }}><MercAvatar m={m} size={56} /></div>
+                              }
+                              <div style={{ position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: 26, height: 4, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', filter: 'blur(4px)' }} />
+                            </div>
+                          </div>
+                        )
+                      })}
+                      {occupants.length === 0 && souls.length === 0 && (
+                        <p className="text-xs italic p-1" style={{ color: 'rgba(120,90,180,0.4)' }}>드래그하여 배치</p>
+                      )}
+                    </div>
+                    {souls.length > 0 && (
+                      <div className="px-1.5 pb-1 flex flex-col gap-1">
+                        <p className="text-xs font-bold px-1" style={{ color: 'rgba(160,130,255,0.7)' }}>👻 영혼</p>
+                        {souls.map(m => (
+                          <div key={m.id} className="rounded-lg overflow-hidden"
+                            style={{ background: 'rgba(70,40,140,0.2)', border: '1px solid rgba(160,130,255,0.32)' }}>
+                            <div className="flex items-center gap-1.5 px-2 py-1">
+                              <MercAvatar m={m} size={30} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold truncate" style={{ color: 'rgba(200,180,255,0.85)' }}>{m.name}</p>
+                                <p className="text-xs" style={{ color: 'rgba(160,130,255,0.55)' }}>{m.class} {m.grade}급 Lv{m.level}</p>
+                              </div>
+                              <div className="flex flex-col gap-0.5">
+                                <button onClick={() => reviveMerc(m.id)}
+                                  className="text-xs rounded px-1.5 py-0.5 font-bold transition hover:brightness-125"
+                                  style={{ background: state.gold >= m.deathCost ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.04)', border: `1px solid ${state.gold >= m.deathCost ? 'rgba(34,197,94,0.45)' : 'rgba(255,255,255,0.08)'}`, color: state.gold >= m.deathCost ? '#86efac' : 'rgba(80,80,80,0.5)', cursor: state.gold >= m.deathCost ? 'pointer' : 'not-allowed' }}>
+                                  ✨{m.deathCost}G
+                                </button>
+                                <button onClick={() => ascendMerc(m.id)}
+                                  className="text-xs rounded px-1.5 py-0.5 font-bold transition hover:brightness-125"
+                                  style={{ background: 'rgba(160,130,255,0.15)', border: '1px solid rgba(160,130,255,0.28)', color: 'rgba(200,180,255,0.8)' }}>
+                                  🕊+💎
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* ── 2F: 훈련소 (중간 훈련장) ── */}
+            {(() => {
+              const room = '훈련소' as const
+              const cap = trainingCapacity(roomLevels[room] ?? 1)
+              const occupants = mercs.filter(m => m.room === room && m.status === '대기중' && !pendingMercIds.has(m.id))
+              const roomLv = roomLevels[room] ?? 1
+              const costs = ROOM_UPGRADE_COSTS[room]
+              const canUpgrade = roomLv < 3 && roomLv < (roomLevels['길드마스터룸'] ?? 1)
+              const upgCost = canUpgrade && costs ? costs[roomLv - 1] : 0
+              return (
+                <div className="flex-1 min-h-0 rounded-xl overflow-hidden flex flex-col"
+                  style={{ background: 'rgba(22,8,4,0.32)', border: '1px solid rgba(220,100,50,0.35)', boxShadow: '0 2px 12px rgba(180,60,20,0.08)' }}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => { e.preventDefault(); const mid = e.dataTransfer.getData('roomMercId'); if (mid) updateMercRoom(mid, room) }}>
+                  <div className="flex items-center justify-between px-2 py-1 flex-shrink-0"
+                    style={{ background: 'rgba(38,10,4,0.72)', borderBottom: '1px solid rgba(200,90,40,0.25)' }}>
+                    <span className="text-xs font-bold" style={{ color: 'rgba(255,155,90,0.95)' }}>
+                      ⚔️ {room} <span className="opacity-50">Lv{roomLv}</span>
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs" style={{ color: 'rgba(120,180,120,0.7)' }}>{ROOM_EFFECTS[room].desc[roomLv - 1]}</span>
+                      {canUpgrade && (
+                        <button onClick={() => upgradeRoom(room)}
+                          className="text-xs font-bold rounded px-1.5 py-0.5 text-white transition hover:brightness-125"
+                          style={{ background: state.gold >= upgCost ? 'rgba(16,185,129,0.4)' : 'rgba(80,80,80,0.3)', border: '1px solid rgba(16,185,129,0.28)' }}>
+                          ↑{upgCost}G
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 p-2 items-end content-start overflow-y-auto flex-1 min-h-0">
+                    {occupants.slice(0, cap).map(m => {
+                      const isSel = selectedMercId === m.id
+                      const isPend = pendingMercIds.has(m.id)
+                      const sprite = getSprite(m.race, m.traits.gender, m.class)
+                      const spriteGlow = m.grade === 'S'
+                        ? 'drop-shadow(0 0 8px rgba(232,121,249,0.95)) drop-shadow(0 0 18px rgba(232,121,249,0.55))'
+                        : m.grade === 'A'
+                        ? 'drop-shadow(0 0 7px rgba(251,191,36,0.9)) drop-shadow(0 0 14px rgba(251,191,36,0.5))'
+                        : m.grade === 'B'
+                        ? 'drop-shadow(0 0 5px rgba(52,211,153,0.7))'
+                        : 'none'
+                      return (
+                        <div key={m.id} draggable
+                          onDragStart={e => { e.dataTransfer.setData('roomMercId', m.id); e.dataTransfer.setData('mercId', m.id); setDraggingMercId(m.id); setSelectedMercId(m.id) }}
+                          onDragEnd={() => setDraggingMercId(null)}
+                          onClick={() => setSelectedMercId(isSel ? null : m.id)}
+                          role="button" tabIndex={0}
+                          className="flex flex-col items-center transition-all select-none"
+                          style={{ width: 72, cursor: 'grab', opacity: draggingMercId === m.id ? 0.35 : 1, borderRadius: 8,
+                            background: isSel ? 'rgba(251,191,36,0.1)' : isPend ? 'rgba(99,102,241,0.08)' : 'transparent',
+                            outline: isSel ? '1px solid rgba(251,191,36,0.45)' : 'none' }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: 'rgba(220,185,100,0.95)', textAlign: 'center', width: '100%', padding: '2px 4px 1px' }}>Lv.{m.level}</div>
+                          <div style={{ width: '100%', padding: '0 4px 3px' }}>
+                            <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 2, overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${Math.min(100, m.expToNext > 0 ? (m.experience / m.expToNext) * 100 : 0)}%`, background: 'rgba(200,160,50,0.85)', borderRadius: 2 }} />
+                            </div>
+                          </div>
+                          <p style={{ fontSize: 11, color: '#ede4cc', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%', padding: '0 4px', textAlign: 'center' }}>{m.name}</p>
+                          <div style={{ fontSize: 10, display: 'flex', gap: 4, padding: '1px 4px 3px', width: '100%', justifyContent: 'center', color: 'rgba(200,200,200,0.8)' }}>
+                            <span>{ELEMENT_ICON[m.element]}</span>
+                            <span style={{ color: '#67e8f9', fontWeight: 700 }}>⚔{m.power}</span>
+                          </div>
+                          <div style={{ position: 'relative', width: 68, height: 84, alignSelf: 'center' }}>
+                            {sprite
+                              ? <img src={sprite} style={{ width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center bottom', filter: spriteGlow, animation: 'gm-training 1.1s ease-in-out infinite' }} />
+                              : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', filter: spriteGlow, animation: 'gm-training 1.1s ease-in-out infinite' }}><MercAvatar m={m} size={56} /></div>
+                            }
+                            <div style={{ position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: 26, height: 4, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', filter: 'blur(4px)' }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {occupants.length === 0 && (
+                      <p className="text-xs italic p-1" style={{ color: 'rgba(180,100,50,0.4)' }}>드래그하여 배치</p>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* ── 1F: 식당 (하단 선술집) ── */}
+            {(() => {
+              const room = '식당' as const
+              const occupants = mercs.filter(m => m.room === room && m.status === '대기중')
+              const roomLv = roomLevels[room] ?? 1
+              const costs = ROOM_UPGRADE_COSTS[room]
+              const canUpgrade = roomLv < 3 && roomLv < (roomLevels['길드마스터룸'] ?? 1)
+              const upgCost = canUpgrade && costs ? costs[roomLv - 1] : 0
+              return (
+                <div className="flex-1 min-h-0 rounded-xl overflow-hidden flex flex-col"
+                  style={{ background: 'rgba(4,16,8,0.32)', border: '1px solid rgba(60,200,100,0.35)', boxShadow: '0 2px 12px rgba(20,140,60,0.08)' }}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => { e.preventDefault(); const mid = e.dataTransfer.getData('roomMercId'); if (mid) updateMercRoom(mid, room) }}>
+                  <div className="flex items-center justify-between px-2 py-1 flex-shrink-0"
+                    style={{ background: 'rgba(4,25,10,0.72)', borderBottom: '1px solid rgba(50,180,80,0.25)' }}>
+                    <span className="text-xs font-bold" style={{ color: 'rgba(80,230,125,0.95)' }}>
+                      🍖 {room} <span className="opacity-50">Lv{roomLv}</span>
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs" style={{ color: 'rgba(120,180,120,0.7)' }}>{ROOM_EFFECTS[room].desc[roomLv - 1]}</span>
+                      {canUpgrade && (
+                        <button onClick={() => upgradeRoom(room)}
+                          className="text-xs font-bold rounded px-1.5 py-0.5 text-white transition hover:brightness-125"
+                          style={{ background: state.gold >= upgCost ? 'rgba(16,185,129,0.4)' : 'rgba(80,80,80,0.3)', border: '1px solid rgba(16,185,129,0.28)' }}>
+                          ↑{upgCost}G
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 p-2 items-end content-start overflow-y-auto flex-1 min-h-0">
+                    {occupants.map(m => {
+                      const isSel = selectedMercId === m.id
+                      const isPend = pendingMercIds.has(m.id)
+                      const sprite = getSprite(m.race, m.traits.gender, m.class)
+                      const spriteGlow = m.grade === 'S'
+                        ? 'drop-shadow(0 0 8px rgba(232,121,249,0.95)) drop-shadow(0 0 18px rgba(232,121,249,0.55))'
+                        : m.grade === 'A'
+                        ? 'drop-shadow(0 0 7px rgba(251,191,36,0.9)) drop-shadow(0 0 14px rgba(251,191,36,0.5))'
+                        : m.grade === 'B'
+                        ? 'drop-shadow(0 0 5px rgba(52,211,153,0.7))'
+                        : 'none'
+                      return (
+                        <div key={m.id} draggable
+                          onDragStart={e => { e.dataTransfer.setData('roomMercId', m.id); e.dataTransfer.setData('mercId', m.id); setDraggingMercId(m.id); setSelectedMercId(m.id) }}
+                          onDragEnd={() => setDraggingMercId(null)}
+                          onClick={() => setSelectedMercId(isSel ? null : m.id)}
+                          role="button" tabIndex={0}
+                          className="flex flex-col items-center transition-all select-none"
+                          style={{ width: 72, cursor: 'grab', opacity: draggingMercId === m.id ? 0.35 : 1, borderRadius: 8,
+                            background: isSel ? 'rgba(251,191,36,0.1)' : isPend ? 'rgba(99,102,241,0.08)' : 'transparent',
+                            outline: isSel ? '1px solid rgba(251,191,36,0.45)' : 'none' }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: 'rgba(220,185,100,0.95)', textAlign: 'center', width: '100%', padding: '2px 4px 1px' }}>Lv.{m.level}</div>
+                          <div style={{ width: '100%', padding: '0 4px 3px' }}>
+                            <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 2, overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${Math.min(100, m.expToNext > 0 ? (m.experience / m.expToNext) * 100 : 0)}%`, background: 'rgba(200,160,50,0.85)', borderRadius: 2 }} />
+                            </div>
+                          </div>
+                          <p style={{ fontSize: 11, color: '#ede4cc', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%', padding: '0 4px', textAlign: 'center' }}>{m.name}</p>
+                          <div style={{ fontSize: 10, display: 'flex', gap: 4, padding: '1px 4px 3px', width: '100%', justifyContent: 'center', color: 'rgba(200,200,200,0.8)' }}>
+                            <span>{ELEMENT_ICON[m.element]}</span>
+                            <span style={{ color: '#67e8f9', fontWeight: 700 }}>⚔{m.power}</span>
+                          </div>
+                          <div style={{ position: 'relative', width: 68, height: 84, alignSelf: 'center' }}>
+                            {sprite
+                              ? <img src={sprite} style={{ width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center bottom', filter: spriteGlow, animation: 'gm-eating 2s ease-in-out infinite' }} />
+                              : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', filter: spriteGlow, animation: 'gm-eating 2s ease-in-out infinite' }}><MercAvatar m={m} size={56} /></div>
+                            }
+                            <div style={{ position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: 26, height: 4, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', filter: 'blur(4px)' }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {occupants.length === 0 && (
+                      <p className="text-xs italic p-1" style={{ color: 'rgba(50,150,80,0.4)' }}>드래그하여 배치</p>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+
+          </div>
+        </div>
+        {/* (구 Wall/Rooms grid 이하는 위 3층 구조로 대체) */}
+        <div style={{ display: 'none' }}>
             {/* Rooms grid in building: 2F top, 1F bottom */}
             <div className="relative z-10 flex flex-col gap-1 p-2 min-h-0" style={{ height: 'calc(100% - 50px)' }}>
               {/* 2F section */}
@@ -1910,8 +2353,8 @@ function App() {
                   return (
                     <div key={room} className="rounded-lg overflow-hidden flex flex-col min-h-0"
                       style={room === '길드마스터룸'
-                        ? { background: 'rgba(20,15,40,0.88)', border: '2px solid rgba(120,80,220,0.45)', boxShadow: 'inset 0 0 20px rgba(100,60,200,0.1)' }
-                        : { background: 'rgba(35,12,8,0.88)', border: '2px solid rgba(220,80,40,0.4)', boxShadow: 'inset 0 0 20px rgba(200,60,20,0.1)' }}
+                        ? { background: 'rgba(12,8,28,0.78)', border: '2px solid rgba(160,110,255,0.5)', boxShadow: '0 4px 24px rgba(80,40,180,0.2), inset 0 0 20px rgba(80,40,160,0.08)' }
+                        : { background: 'rgba(28,10,6,0.78)', border: '2px solid rgba(220,100,50,0.5)', boxShadow: '0 4px 24px rgba(180,60,20,0.2), inset 0 0 20px rgba(180,60,20,0.08)' }}
                       onDragOver={e => e.preventDefault()}
                       onDrop={e => {
                         e.preventDefault()
@@ -1920,8 +2363,8 @@ function App() {
                       }}>
                       <div className="flex flex-col px-1.5 pt-1 pb-0.5 flex-shrink-0"
                         style={room === '길드마스터룸'
-                          ? { background: 'rgba(40,20,80,0.7)', borderBottom: '1px solid rgba(120,80,220,0.25)' }
-                          : { background: 'rgba(60,15,8,0.7)', borderBottom: '1px solid rgba(220,80,40,0.25)' }}>
+                          ? { background: 'rgba(30,15,65,0.85)', borderBottom: '1px solid rgba(160,110,255,0.3)' }
+                          : { background: 'rgba(55,15,8,0.85)', borderBottom: '1px solid rgba(220,100,50,0.3)' }}>
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-bold" style={{ color: room === '길드마스터룸' ? 'rgba(180,140,255,0.9)' : 'rgba(255,140,80,0.9)' }}>
                             {ROOM_EFFECTS[room].icon} {room}
@@ -1963,8 +2406,9 @@ function App() {
                                 <p className="text-sm font-semibold text-slate-300 truncate max-w-[80px]">{m.name}</p>
                                 <span className={`text-sm font-bold ${gradeText(m.grade)}`}>{GRADE_STARS[m.grade] ?? m.grade} Lv{m.level}</span>
                                 <div className="flex items-center gap-1 mt-0.5">
-                                  <span className={`text-sm font-semibold ${m.condition >= 70 ? 'text-emerald-400' : m.condition >= 40 ? 'text-amber-400' : 'text-red-400'}`}>{m.condition}%</span>
-                                  <span className="text-sm">{favEmoji(m.favorability)}</span>
+                                  <span className={`text-xs font-semibold ${m.condition >= 70 ? 'text-emerald-400' : m.condition >= 40 ? 'text-amber-400' : 'text-red-400'}`}>{m.condition}%</span>
+                                  <span className="text-xs" style={{ color: (m.morale ?? 70) >= 70 ? 'rgba(129,140,248,0.9)' : (m.morale ?? 70) >= 40 ? 'rgba(245,158,11,0.9)' : 'rgba(239,68,68,0.9)' }}>⚡{m.morale ?? 70}</span>
+                                  <span className="text-xs">{favEmoji(m.favorability)}</span>
                                 </div>
                               </div>
                             )
@@ -2038,7 +2482,7 @@ function App() {
                 const upgCost = canUpgrade && costs ? costs[roomLv - 1] : 0
                 return (
                   <div className="rounded-lg overflow-hidden flex flex-col flex-1 min-h-0"
-                    style={{ background: 'rgba(8,25,15,0.88)', border: '2px solid rgba(40,180,80,0.4)', boxShadow: 'inset 0 0 20px rgba(20,160,60,0.08)' }}
+                    style={{ background: 'rgba(6,22,12,0.78)', border: '2px solid rgba(60,200,100,0.45)', boxShadow: '0 4px 24px rgba(20,140,60,0.15), inset 0 0 20px rgba(20,140,60,0.06)' }}
                     onDragOver={e => e.preventDefault()}
                     onDrop={e => {
                       e.preventDefault()
@@ -2046,7 +2490,7 @@ function App() {
                       if (mid) updateMercRoom(mid, room)
                     }}>
                     <div className="flex flex-col px-1.5 pt-1 pb-0.5 flex-shrink-0"
-                      style={{ background: 'rgba(8,40,20,0.7)', borderBottom: '1px solid rgba(40,180,80,0.2)' }}>
+                      style={{ background: 'rgba(8,40,20,0.85)', borderBottom: '1px solid rgba(60,200,100,0.25)' }}>
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-bold" style={{ color: 'rgba(80,220,120,0.9)' }}>
                           {ROOM_EFFECTS[room].icon} {room}
@@ -2102,17 +2546,7 @@ function App() {
               })()}
               </div>{/* end 1F wrapper */}
             </div>
-            {/* Gate */}
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 pointer-events-none" style={{
-              width: 50, height: 46, background: '#08080f', borderRadius: '50% 50% 0 0 / 100% 100% 0 0',
-              border: '3px solid #4a5568', borderBottom: 'none'
-            }} />
           </div>
-          <div className="flex-shrink-0" style={{
-            height: 18, background: '#1a2030',
-            borderLeft: '3px solid #4a5568', borderRight: '3px solid #4a5568', borderBottom: '3px solid #374151'
-          }} />
-        </div>
       </div>
 
       {/* ── Arrival Preview Modal ─────────────── */}
@@ -2560,6 +2994,25 @@ function App() {
             {activeTab === 'buildings' && (
               <div className="flex-1 overflow-y-auto p-3 space-y-2">
                 <p className="text-sm text-slate-500">건물을 건설·업그레이드하여 길드를 강화하세요.</p>
+                {/* Merchant / Dungeon badges */}
+                {merchantState?.active && (
+                  <button
+                    onClick={() => setShowMerchant(true)}
+                    className="w-full text-sm px-3 py-1.5 rounded-xl font-bold"
+                    style={{ background: 'rgba(251,191,36,0.2)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.4)' }}
+                  >
+                    행상인 방문 중 — 클릭하여 구매
+                  </button>
+                )}
+                {activeDungeon && activeDungeon.status === 'active' && (
+                  <button
+                    onClick={() => setShowDungeon(true)}
+                    className="w-full text-sm px-3 py-1.5 rounded-xl font-bold"
+                    style={{ background: 'rgba(124,58,237,0.2)', color: '#a78bfa', border: '1px solid rgba(124,58,237,0.4)' }}
+                  >
+                    던전 진행 중: {activeDungeon.name} ({activeDungeon.currentFloor}/{activeDungeon.maxFloor}층)
+                  </button>
+                )}
                 {(Object.keys(BUILDING_INFO) as Array<keyof typeof BUILDING_INFO>).map(id => {
                   const info = BUILDING_INFO[id]
                   const currentLv = buildings[id]
@@ -2652,6 +3105,7 @@ function App() {
                       isDragging={draggingMercId === m.id}
                       onDragStart={e => { e.dataTransfer.setData('mercId', m.id); setDraggingMercId(m.id); setSelectedMercId(m.id) }}
                       onDragEnd={() => setDraggingMercId(null)}
+                      onEquipClick={() => setShowEquipModal(m.id)}
                     />
                   )
                 })}
@@ -2691,6 +3145,11 @@ function App() {
                         </div>
                         {condBar(selectedMercDetail.condition)}
                         <div className="flex justify-between text-sm mt-1" style={{ color: 'rgba(120,120,120,0.6)' }}>
+                          <span>사기</span>
+                          <span className={(selectedMercDetail.morale ?? 70) >= 70 ? 'text-indigo-400' : (selectedMercDetail.morale ?? 70) >= 40 ? 'text-amber-400' : 'text-red-400'}>{selectedMercDetail.morale ?? 70}%</span>
+                        </div>
+                        {moraleBar(selectedMercDetail.morale ?? 70)}
+                        <div className="flex justify-between text-sm mt-1" style={{ color: 'rgba(120,120,120,0.6)' }}>
                           <span>HP</span>
                           <span className={selectedMercDetail.hp >= 70 ? 'text-emerald-400' : selectedMercDetail.hp >= 40 ? 'text-amber-400' : 'text-red-400'}>{selectedMercDetail.hp}/100</span>
                         </div>
@@ -2721,49 +3180,34 @@ function App() {
                         </div>
                       ))}
                     </div>
-                    {/* 무기 섹션 */}
-                    {(() => {
-                      const cur = weaponOf(selectedMercDetail)
-                      const next = cur && cur.tier < 3 ? WEAPONS.find(w => w.class === cur.class && w.tier === (cur.tier + 1) as 1|2|3) : null
-                      const canUpgrade = cur && cur.tier < 3 && cur.upgradeCost > 0 && state.gold >= cur.upgradeCost
-                      return (
-                        <div className="mt-3 rounded-xl p-2.5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                          <p className="text-sm text-slate-500 mb-1.5">장착 무기</p>
-                          {cur ? (
-                            <>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-sm text-white">{cur.icon} {cur.name} <span className="text-sm text-slate-500">Tier{cur.tier}</span></span>
-                                <div className="flex gap-1 text-sm">
-                                  {cur.atkBonus > 0 && <span className="text-red-300">공+{cur.atkBonus}</span>}
-                                  {cur.trapBonus > 0 && <span className="text-purple-300">함+{cur.trapBonus}</span>}
-                                  {cur.survBonus > 0 && <span className="text-emerald-300">생+{cur.survBonus}</span>}
-                                  {(cur.raceBonus[selectedMercDetail.race] ?? 0) > 0 && <span className="text-amber-300">종족+{cur.raceBonus[selectedMercDetail.race]}</span>}
-                                </div>
-                              </div>
-                              {next && (
-                                <div className="text-sm text-slate-600 mb-1.5">다음: {next.icon} {next.name} (Tier{next.tier})</div>
-                              )}
-                              {cur.tier < 3 ? (
-                                <button
-                                  onClick={() => upgradeWeapon(selectedMercDetail)}
-                                  disabled={!canUpgrade}
-                                  className="w-full rounded-lg py-1 text-sm font-bold transition"
-                                  style={{
-                                    background: canUpgrade ? 'linear-gradient(135deg,#1d4ed8,#3b82f6)' : 'rgba(255,255,255,0.04)',
-                                    color: canUpgrade ? 'white' : 'rgba(100,100,100,0.5)',
-                                    border: `1px solid ${canUpgrade ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.05)'}`,
-                                    cursor: canUpgrade ? 'pointer' : 'not-allowed'
-                                  }}>
-                                  {canUpgrade ? `업그레이드 ${cur.upgradeCost}G` : state.gold < cur.upgradeCost ? `금화 부족 (${cur.upgradeCost}G)` : '최고 등급'}
-                                </button>
-                              ) : (
-                                <div className="text-center text-sm text-amber-400 py-0.5">최고 등급 무기</div>
-                              )}
-                            </>
-                          ) : <span className="text-sm text-slate-600">무기 없음</span>}
-                        </div>
-                      )
-                    })()}
+                    {/* 장비 섹션 */}
+                    <div className="mt-3 border-t pt-3" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-slate-400 text-xs">장착 장비</span>
+                        <button
+                          className="text-xs px-2 py-0.5 rounded"
+                          style={{ background: 'rgba(139,92,246,0.2)', color: '#c4b5fd' }}
+                          onClick={() => setShowEquipModal(selectedMercDetail.id)}
+                        >
+                          관리
+                        </button>
+                      </div>
+                      {(['weapon', 'head', 'body', 'accessory'] as const).map(slot => {
+                        const itemId = selectedMercDetail.equipment[slot]
+                        const item = itemId ? findEquip(itemId) : null
+                        const slotLabel = { weapon: '무기', head: '머리', body: '몸통', accessory: '장신구' }[slot]
+                        const gradeColor: Record<string, string> = { S: '#e879f9', A: '#fbbf24', B: '#34d399', C: '#38bdf8', D: '#94a3b8' }
+                        return (
+                          <div key={slot} className="flex items-center gap-2 text-xs">
+                            <span className="text-slate-500 w-8">{slotLabel}</span>
+                            {item
+                              ? <span className="text-slate-300">{item.icon} {item.name} <span style={{ color: gradeColor[item.grade] }}>{item.grade}</span></span>
+                              : <span className="text-slate-600">(없음)</span>
+                            }
+                          </div>
+                        )
+                      })}
+                    </div>
                     <div className="mt-3">
                       <StatRadar mercenary={selectedMercDetail} />
                     </div>
@@ -2979,6 +3423,104 @@ function App() {
           </div>
         </div>
       )}
+      {/* ── Pending Drop Modal ───────────────────────── */}
+      {pendingDrop && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.75)' }}>
+          <div className="rounded-2xl p-5" style={{ background: '#1e2030', border: '1px solid rgba(255,255,255,0.1)', maxWidth: 380, width: '90vw' }}>
+            <div className="text-center mb-4">
+              <div className="text-2xl mb-1">{pendingDrop.icon}</div>
+              <div className="text-white font-bold text-lg">전리품 획득!</div>
+              <div className="text-amber-300 font-bold mt-1">[{pendingDrop.name} {pendingDrop.grade}등급]</div>
+              <div className="text-slate-400 text-sm mt-2 flex justify-center gap-3 flex-wrap">
+                {pendingDrop.powerBonus > 0 && <span>전력+{pendingDrop.powerBonus}</span>}
+                {pendingDrop.atkBonus > 0 && <span>공격+{pendingDrop.atkBonus}</span>}
+                {pendingDrop.trapBonus > 0 && <span>함정+{pendingDrop.trapBonus}</span>}
+                {pendingDrop.survBonus > 0 && <span>생존+{pendingDrop.survBonus}</span>}
+              </div>
+              {pendingDrop.passive && <div className="text-purple-400 text-sm mt-1">{pendingDrop.passive.condition}</div>}
+              <div className="text-slate-500 text-xs mt-1">구매가: {pendingDrop.buyCost}G</div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => acceptDrop(pendingDrop)}
+                className="flex-1 py-2 rounded-lg font-bold text-sm"
+                style={{ background: 'rgba(34,197,94,0.3)', border: '1px solid rgba(34,197,94,0.5)', color: '#86efac' }}
+              >
+                인벤토리에 추가
+              </button>
+              <button
+                onClick={() => rejectDrop(pendingDrop)}
+                className="flex-1 py-2 rounded-lg font-bold text-sm"
+                style={{ background: 'rgba(255,255,255,0.06)', color: '#94a3b8' }}
+              >
+                거절 (자동 장착 시도)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Equipment Modal ───────────────────────────── */}
+      {showEquipModal && (() => {
+        const merc = mercs.find(m => m.id === showEquipModal)
+        if (!merc) return null
+        return (
+          <EquipmentModal
+            merc={merc}
+            guildInventory={guildInventory}
+            onEquip={equipItem}
+            onClose={() => setShowEquipModal(null)}
+          />
+        )
+      })()}
+
+      {/* ── Merchant Panel ────────────────────────────── */}
+      {showMerchant && merchantState?.active && (
+        <MerchantPanel
+          merchant={merchantState}
+          gold={state.gold}
+          guildInventory={guildInventory}
+          onBuy={item => buyFromMerchant(
+            item, state.gold, guildInventory,
+            (bought, cost) => {
+              setState(prev => ({ ...prev, gold: prev.gold - cost }))
+              setGuildInventory(prev => [...prev, bought])
+            },
+            log,
+          )}
+          onClose={() => setShowMerchant(false)}
+        />
+      )}
+
+      {/* ── Dungeon Panel ─────────────────────────────── */}
+      {showDungeon && activeDungeon && (() => {
+        const baseQuest = ALL_QUESTS.find(q => q.difficulty >= 100) ?? ALL_QUESTS[0]
+        const floorQuest: Quest = {
+          ...baseQuest,
+          id: `dg-floor-${activeDungeon.currentFloor}`,
+          name: `${activeDungeon.name} ${activeDungeon.currentFloor}층`,
+          difficulty: dungeonFloorDifficulty(baseQuest.difficulty, activeDungeon.currentFloor),
+          deathRisk: dungeonFloorDeathRisk(baseQuest.deathRisk, activeDungeon.currentFloor),
+          element: activeDungeon.element,
+          reward: {
+            gold: dungeonFloorGold(activeDungeon.currentFloor),
+            fame: 0,
+            exp: dungeonFloorXp(activeDungeon.currentFloor),
+          },
+          duration: 2 + activeDungeon.currentFloor,
+        }
+        return (
+          <DungeonPanel
+            dungeon={activeDungeon}
+            floorQuest={floorQuest}
+            availableMercs={mercs.filter(m => m.status === '대기중')}
+            onDispatch={() => {}}
+            onAbandon={() => { abandonDungeon(); setShowDungeon(false) }}
+            onClose={() => setShowDungeon(false)}
+          />
+        )
+      })()}
+
       {/* ── Story Modal ──────────────────────────────── */}
       {showStoryModal && storyContent && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/95" style={{ zIndex: 70 }}>

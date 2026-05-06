@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import type { SaveSlotData } from '../types'
-import { DEFAULT_WEAPON } from '../data/weapons'
 import { drawQuestPool } from '../utils/quest'
 
 const SAVE_KEY = 'sma_guild_saves'
@@ -56,7 +55,9 @@ export function useSaveLoad() {
       const migrated = (['대장간', '숙소'] as string[]).includes(m.room)
         ? { ...m, room: '식당' as const }
         : m
-      return { ...migrated, weaponId: migrated.weaponId ?? DEFAULT_WEAPON[migrated.class] }
+      const legacy = migrated as any
+      const migratedEquip = legacy.equipment ?? { weapon: null, head: null, body: null, accessory: null }
+      return { ...migrated, equipment: migratedEquip }
     }),
     activeQuests: data.activeQuests.map((aq: any) => {
       if (typeof aq.completesAt === 'number') return aq

@@ -70,7 +70,7 @@ export interface ActiveDungeon {
   maxFloor: number
   currentFloor: number           // 1-indexed, next floor to attempt
   clearedFloors: number
-  element: '불' | '얼음' | '번개' | '자연' | '암흑' | '빛'
+  element: '불' | '얼음' | '자연' | '암흑' | '빛'
   status: 'active' | 'completed' | 'abandoned'
   activeDungeonQuestId?: string  // ActiveQuest ID for the currently dispatched floor
 }
@@ -91,7 +91,7 @@ export interface Mercenary {
   class: MercenaryClass
   grade: MercenaryGrade
   power: number
-  element: '불' | '얼음' | '번개' | '자연' | '암흑' | '빛'
+  element: '불' | '얼음' | '자연' | '암흑' | '빛'
   trap_disarm: number
   condition: number
   hp: number
@@ -136,7 +136,7 @@ export interface Quest {
   deathRisk: number
   conditionDrain: number
   dailyGoldCost: number
-  element: '불' | '얼음' | '번개' | '자연' | '암흑' | '빛'
+  element: '불' | '얼음' | '자연' | '암흑' | '빛'
   trapFocus: boolean
   requiredQuestId?: string
   chainId?: string

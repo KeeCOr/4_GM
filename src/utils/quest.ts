@@ -1,7 +1,7 @@
 import type { Mercenary, Quest } from '../types'
 import { ALL_QUESTS } from '../data/quests'
 import { GUILD_MAX_QUEST_DIFF, QUEST_BASE_TIMES_MIN } from '../constants'
-import { effPower, wTrap, wAtk, wSurv, canTrap } from './power'
+import { effPower, eqTrap, eqAtk, eqSurv, canTrap } from './power'
 
 export function computeGuildLevel(fame: number): number {
   const GUILD_LEVEL_FAME = [0, 30, 80, 180, 350] as const
@@ -39,10 +39,6 @@ export function calcQuestDurationMs(quest: Quest, assignedMercs: Mercenary[]): n
   else if (powerRatio >= 1.5) mult = 0.55
   else if (powerRatio >= 1.2) mult = 0.70
   else if (powerRatio >= 1.0) mult = 0.85
-  if (quest.element === '번개') {
-    const cnt = assignedMercs.filter(m => m.element === '번개').length
-    if (cnt > 0) mult *= Math.max(0.6, 1 - cnt * 0.12)
-  }
   return Math.max(5, Math.round(baseMins * mult)) * 60 * 1000
 }
 
@@ -60,7 +56,6 @@ export function calcSuccessRate(quest: Quest, assignedIds: string[], allMercs: M
     switch (m.element) {
       case '불':   rate = Math.min(95, rate + 13); break
       case '얼음': rate = Math.min(95, rate + 8);  break
-      case '번개': rate = Math.min(95, rate + 9);  break
       case '자연': rate = Math.min(95, rate + 10); break
       case '암흑': rate = Math.min(95, rate + 11); break
       case '빛':   rate = Math.min(95, rate + 14); break
@@ -71,7 +66,7 @@ export function calcSuccessRate(quest: Quest, assignedIds: string[], allMercs: M
     rate = Math.min(95, rate + darkMatch * 8)
   }
   if (quest.trapFocus) {
-    const totalTrap = assigned.filter(m => canTrap(m)).reduce((s, m) => s + m.trap_disarm + wTrap(m), 0)
+    const totalTrap = assigned.filter(m => canTrap(m)).reduce((s, m) => s + m.trap_disarm + eqTrap(m), 0)
     if (totalTrap >= 80) rate = Math.min(95, rate + 10)
     else if (totalTrap >= 50) rate = Math.min(95, rate + 5)
   }
@@ -95,15 +90,15 @@ export function calcMercDeathRisk(quest: Quest, merc: Mercenary, party: Mercenar
   else if (powerRatio < 0.95) risk *= 1.2
   else if (powerRatio >= 1.5) risk *= 0.6
   if (quest.conditionDrain >= 20 && canTrap(merc)) {
-    risk *= Math.max(0.5, 1.6 - (merc.trap_disarm + wTrap(merc)) / 35)
+    risk *= Math.max(0.5, 1.6 - (merc.trap_disarm + eqTrap(merc)) / 35)
   }
   if (quest.deathRisk >= 0.12) {
-    risk *= Math.max(0.55, 1.45 - (merc.stats.공격력 + wAtk(merc)) / 55)
+    risk *= Math.max(0.55, 1.45 - (merc.stats.공격력 + eqAtk(merc)) / 55)
   }
   if (quest.duration >= 4) {
-    risk *= Math.max(0.5, 1.35 - (merc.stats.생존율 + wSurv(merc)) / 75)
+    risk *= Math.max(0.5, 1.35 - (merc.stats.생존율 + eqSurv(merc)) / 75)
   }
-  risk *= Math.max(0.28, 1 - (merc.stats.생존율 + wSurv(merc)) / 120)
+  risk *= Math.max(0.28, 1 - (merc.stats.생존율 + eqSurv(merc)) / 120)
   const partyClasses = party.map(m => m.class)
   if (partyClasses.includes('성직자')) risk *= 0.65
   if (partyClasses.includes('전사') && merc.class !== '전사') risk *= 0.82
