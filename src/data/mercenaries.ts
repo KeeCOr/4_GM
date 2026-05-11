@@ -1,4 +1,5 @@
 import type { Mercenary } from '../types'
+import { GRADE_PASSIVE_SLOTS, pickRandomPassive } from './passives'
 export { ALL_QUESTS } from './quests'
 
 export const initialMercenaries: Mercenary[] = [
@@ -9,7 +10,8 @@ export const initialMercenaries: Mercenary[] = [
     traits: { cooperation: 65, ego: 50, gender: '남', synergy_factor: 1.0 },
     stats: { 공격력: 30, 함정해제: 15, 생존율: 35, 협조성: 65 },
     dailyWage: 18, favorability: 50, morale: 70, status: '대기중', room: '식당',
-    level: 1, experience: 0, expToNext: 100, equipment: { weapon: null, head: null, body: null, accessory: null }
+    level: 1, experience: 0, expToNext: 100, equipment: { weapon: null, head: null, body: null, accessory: null },
+    startingGrade: 'D', passives: ['strong_body'],
   },
   {
     id: 'm2', name: '미나원', age: 19, race: '인간', class: '궁수',
@@ -18,7 +20,8 @@ export const initialMercenaries: Mercenary[] = [
     traits: { cooperation: 60, ego: 55, gender: '여', synergy_factor: 0.98 },
     stats: { 공격력: 28, 함정해제: 18, 생존율: 28, 협조성: 60 },
     dailyWage: 16, favorability: 50, morale: 70, status: '대기중', room: '식당',
-    level: 1, experience: 0, expToNext: 100, equipment: { weapon: null, head: null, body: null, accessory: null }
+    level: 1, experience: 0, expToNext: 100, equipment: { weapon: null, head: null, body: null, accessory: null },
+    startingGrade: 'D', passives: ['keen_eye'],
   },
   {
     id: 'm3', name: '브란성', age: 24, race: '드워프', class: '도적',
@@ -27,7 +30,8 @@ export const initialMercenaries: Mercenary[] = [
     traits: { cooperation: 55, ego: 60, gender: '남', synergy_factor: 0.96 },
     stats: { 공격력: 35, 함정해제: 45, 생존율: 38, 협조성: 55 },
     dailyWage: 28, favorability: 50, morale: 70, status: '대기중', room: '식당',
-    level: 2, experience: 80, expToNext: 200, equipment: { weapon: null, head: null, body: null, accessory: null }
+    level: 2, experience: 80, expToNext: 200, equipment: { weapon: null, head: null, body: null, accessory: null },
+    startingGrade: 'C', passives: ['trap_sense', 'iron_will'],
   },
 ]
 
@@ -43,12 +47,12 @@ export const randomName = () =>
 export const RACE_LIST = ['엘프', '인간', '드워프', '수인'] as const
 export const CLASS_LIST: Mercenary['class'][] = ['궁수', '성직자', '도적', '마법사', '전사']
 
-export const CLASS_PROFILES: Record<Mercenary['class'], { atk: number; trap: number; surv: number; cost: number }> = {
-  궁수: { atk: 1.3, trap: 0.8, surv: 1.0, cost: 1.05 },
-  성직자: { atk: 0.75, trap: 1.0, surv: 1.25, cost: 1.25 },
-  도적: { atk: 0.9, trap: 1.4, surv: 0.95, cost: 0.95 },
-  마법사: { atk: 1.35, trap: 1.0, surv: 0.9, cost: 1.3 },
-  전사: { atk: 1.05, trap: 0.9, surv: 1.2, cost: 1.1 },
+export const CLASS_PROFILES: Record<Mercenary['class'], { atk: number; trap: number; surv: number }> = {
+  궁수:   { atk: 1.3,  trap: 0.8, surv: 1.0  },
+  성직자: { atk: 0.75, trap: 1.0, surv: 1.25 },
+  도적:   { atk: 0.9,  trap: 1.4, surv: 0.95 },
+  마법사: { atk: 1.35, trap: 1.0, surv: 0.9  },
+  전사:   { atk: 1.05, trap: 0.9, surv: 1.2  },
 }
 
 export const RACE_MODS = {
@@ -97,15 +101,18 @@ export const GRADE_WEIGHTS = [
   { D: 15, C: 25, B: 30, A: 25, S: 5 },// tavern lv 4
 ]
 
-function pickGrade(tavernLevel: number): Mercenary['grade'] {
-  const weights = GRADE_WEIGHTS[Math.min(tavernLevel, 4)]
+// Premium refresh weights (crystal-paid): slightly better than max tavern
+export const PREMIUM_GRADE_WEIGHTS = { D: 5, C: 20, B: 35, A: 30, S: 10 }
+
+function pickGrade(tavernLevel: number, premium = false): Mercenary['grade'] {
+  const weights = premium ? PREMIUM_GRADE_WEIGHTS : GRADE_WEIGHTS[Math.min(tavernLevel, 4)]
   const total = Object.values(weights).reduce((a, b) => a + b, 0)
   let roll = Math.random() * total
   for (const [grade, w] of Object.entries(weights)) {
     roll -= w
     if (roll <= 0) return grade as Mercenary['grade']
   }
-  return 'D'
+  return premium ? 'B' : 'D'
 }
 
 function allocateStats(total: number, cls: Mercenary['class']) {
@@ -120,10 +127,10 @@ function allocateStats(total: number, cls: Mercenary['class']) {
   return { 공격력: vals[0], 함정해제: vals[1], 생존율: vals[2] }
 }
 
-export function generateMercenary(tavernLevel = 0): Mercenary {
+export function generateMercenary(tavernLevel = 0, premium = false): Mercenary {
   const race = RACE_LIST[Math.floor(Math.random() * RACE_LIST.length)]
   const cls = CLASS_LIST[Math.floor(Math.random() * CLASS_LIST.length)]
-  const grade = pickGrade(tavernLevel)
+  const grade = pickGrade(tavernLevel, premium)
   const statTotal = GRADE_STAT_TOTALS[grade]
   const raceMod = RACE_MODS[race]
   const cooperation = Math.max(30, Math.min(88, Math.round(raceMod.cooperation + (Math.random() * 14 - 7))))
@@ -140,15 +147,15 @@ export function generateMercenary(tavernLevel = 0): Mercenary {
     ['D','C','B','A','S'].indexOf(grade) * 12 +
     (cls === '마법사' ? 4 : 0)
   ))
-  const clsP = CLASS_PROFILES[cls]
   const gradeIdx = ['D','C','B','A','S'].indexOf(grade)
   const rawCost = Math.round(
     (power * 1.2 + gradeIdx * 15 + cooperation * 0.5)
-    * raceMod.cost * clsP.cost
+    * raceMod.cost
   )
+  const GRADE_HIRE_MULT = [0, 0.15, 1.5, 3.0, 6.0]
   const cost = gradeIdx === 0 ? 0
-    : gradeIdx === 1 ? Math.min(20, Math.max(0, Math.round(rawCost * 0.15)))
-    : Math.max(50, rawCost)
+    : gradeIdx === 1 ? Math.min(30, Math.max(0, Math.round(rawCost * GRADE_HIRE_MULT[1])))
+    : Math.round(rawCost * GRADE_HIRE_MULT[gradeIdx])
   const dailyWage = Math.max(12, Math.round(cost * 0.07 + ['D','C','B','A','S'].indexOf(grade) * 5))
 
   return {
@@ -170,7 +177,17 @@ export function generateMercenary(tavernLevel = 0): Mercenary {
     morale: 70,
     status: '대기중', room: '식당',
     level: 1, experience: 0, expToNext: EXP_TO_NEXT(1),
-    equipment: { weapon: null, head: null, body: null, accessory: null }
+    equipment: { weapon: null, head: null, body: null, accessory: null },
+    startingGrade: grade,
+    passives: (() => {
+      const slots = GRADE_PASSIVE_SLOTS[grade] ?? 1
+      const picks: string[] = []
+      for (let i = 0; i < slots; i++) {
+        const p = pickRandomPassive(picks)
+        if (p) picks.push(p)
+      }
+      return picks
+    })(),
   }
 }
 

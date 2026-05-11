@@ -23,24 +23,24 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', 'Malgun Gothic', sans-serif; font-size: 14px; line-height: 1.6; }
 
-  /* ── Layout ── */
+  /* Layout */
   .sidebar { position: fixed; top: 0; left: 0; width: 220px; height: 100vh; background: var(--bg2); border-right: 1px solid rgba(120,80,200,0.2); overflow-y: auto; z-index: 100; padding: 20px 0; }
   .main { margin-left: 220px; padding: 40px 48px; max-width: 1100px; }
 
-  /* ── Sidebar ── */
+  /* Sidebar */
   .sidebar-title { padding: 0 16px 16px; font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--gold-dim); border-bottom: 1px solid rgba(245,158,11,0.15); margin-bottom: 8px; }
   .sidebar a { display: block; padding: 7px 16px; color: var(--text-dim); text-decoration: none; font-size: 13px; transition: all 0.15s; border-left: 2px solid transparent; }
   .sidebar a:hover, .sidebar a.active { color: var(--gold); border-left-color: var(--gold); background: rgba(245,158,11,0.06); }
   .sidebar .section-label { padding: 12px 16px 4px; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(120,80,200,0.6); }
 
-  /* ── Typography ── */
+  /* Typography */
   h1 { font-size: 32px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
   h2 { font-size: 22px; font-weight: 700; color: var(--gold); margin: 48px 0 20px; padding-bottom: 10px; border-bottom: 1px solid rgba(245,158,11,0.2); display: flex; align-items: center; gap: 10px; }
   h2 .icon { font-size: 20px; }
   h3 { font-size: 16px; font-weight: 600; color: var(--purple-light); margin: 24px 0 12px; }
   p { color: var(--text); margin-bottom: 10px; }
 
-  /* ── Hero ── */
+  /* Hero */
   .hero { background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(180,83,9,0.1)); border: 1px solid rgba(120,80,200,0.25); border-radius: 16px; padding: 32px 36px; margin-bottom: 40px; }
   .hero h1 { margin-bottom: 6px; }
   .hero .sub { font-size: 15px; color: var(--text-dim); margin-bottom: 20px; }
@@ -52,21 +52,21 @@
   .badge-green { background: rgba(34,197,94,0.15); border: 1px solid rgba(34,197,94,0.35); color: #4ade80; }
   .badge-blue { background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.35); color: #60a5fa; }
 
-  /* ── Cards ── */
+  /* Cards */
   .card { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; }
   .card-grid { display: grid; gap: 12px; }
   .card-grid.cols-2 { grid-template-columns: 1fr 1fr; }
   .card-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
   .card-grid.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
 
-  /* ── Tables ── */
+  /* Tables */
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   thead th { background: rgba(255,255,255,0.05); color: var(--gold-dim); font-weight: 700; padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid rgba(255,255,255,0.08); }
   tbody td { padding: 9px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text); }
   tbody tr:hover td { background: rgba(255,255,255,0.03); }
   .tbl-wrap { border: 1px solid var(--card-border); border-radius: 10px; overflow: hidden; margin-bottom: 20px; }
 
-  /* ── Stat chips ── */
+  /* Stat chips */
   .stat-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
   .stat-chip { padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid; }
   .chip-atk { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.3); color: #f87171; }
@@ -76,7 +76,7 @@
   .chip-hp { background: rgba(251,191,36,0.12); border-color: rgba(251,191,36,0.3); color: #fbbf24; }
   .chip-cost { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.3); color: var(--gold); }
 
-  /* ── Element badges ── */
+  /* Element badges */
   .el-fire   { background: rgba(234,88,12,0.2);  border-color: rgba(234,88,12,0.4);  color: #fb923c; }
   .el-ice    { background: rgba(34,211,238,0.15); border-color: rgba(34,211,238,0.35);color: #67e8f9; }
   .el-light  { background: rgba(250,204,21,0.15); border-color: rgba(250,204,21,0.35);color: #fde047; }
@@ -84,23 +84,25 @@
   .el-nature { background: rgba(34,197,94,0.15);  border-color: rgba(34,197,94,0.35); color: #4ade80; }
   .el-thunder{ background: rgba(250,204,21,0.2);  border-color: rgba(250,204,21,0.4); color: #fbbf24; }
 
-  /* ── Info boxes ── */
+  /* Info boxes */
   .info-box { border-radius: 10px; padding: 14px 18px; margin-bottom: 14px; font-size: 13px; }
   .info-purple { background: rgba(124,58,237,0.08); border: 1px solid rgba(124,58,237,0.2); }
   .info-gold { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); }
   .info-red { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); }
+  .info-green { background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); }
+  .info-blue { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); }
 
-  /* ── Grade colors ── */
+  /* Grade colors */
   .grade-s { color: #e879f9; font-weight: 700; }
   .grade-a { color: #fbbf24; font-weight: 700; }
   .grade-b { color: #34d399; font-weight: 700; }
   .grade-c { color: #38bdf8; font-weight: 700; }
   .grade-d { color: #94a3b8; font-weight: 700; }
 
-  /* ── Formula ── */
+  /* Formula */
   .formula { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px 16px; font-family: 'Consolas', monospace; font-size: 13px; color: #a78bfa; margin-bottom: 12px; white-space: pre-wrap; }
 
-  /* ── Timeline ── */
+  /* Timeline */
   .timeline { position: relative; padding-left: 28px; }
   .timeline::before { content: ''; position: absolute; left: 8px; top: 6px; bottom: 6px; width: 1px; background: rgba(120,80,200,0.3); }
   .timeline-item { position: relative; margin-bottom: 18px; }
@@ -108,7 +110,23 @@
   .timeline-label { font-weight: 700; color: var(--gold); font-size: 13px; }
   .timeline-desc { color: var(--text-dim); font-size: 13px; }
 
-  /* ── Responsive ── */
+  /* Version history */
+  .ver-row { display: flex; align-items: baseline; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .ver-tag { font-size: 11px; font-weight: 700; font-family: 'Consolas', monospace; color: var(--purple-light); background: rgba(124,58,237,0.15); border: 1px solid rgba(124,58,237,0.25); padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+  .ver-desc { font-size: 13px; color: var(--text-dim); }
+
+  /* Success factor cards */
+  .success-card { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; margin-bottom: 12px; position: relative; overflow: hidden; }
+  .success-card::before { content: ''; position: absolute; top: 0; left: 0; width: 3px; height: 100%; background: var(--purple); border-radius: 3px 0 0 3px; }
+  .success-card.factor-gold::before { background: var(--gold); }
+  .success-card.factor-green::before { background: #4ade80; }
+  .success-card.factor-blue::before { background: #60a5fa; }
+  .success-card.factor-red::before { background: #f87171; }
+  .success-card.factor-pink::before { background: #f472b6; }
+  .success-title { font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+  .success-sub { font-size: 12px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+
+  /* Responsive */
   @media (max-width: 900px) {
     .sidebar { display: none; }
     .main { margin-left: 0; padding: 24px 20px; }
@@ -116,7 +134,7 @@
     .card-grid.cols-2 { grid-template-columns: 1fr; }
   }
 
-  /* ── Misc ── */
+  /* Misc */
   .divider { height: 1px; background: rgba(255,255,255,0.06); margin: 40px 0; }
   .big-number { font-size: 28px; font-weight: 800; color: var(--gold); }
   .label { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 1px; }
@@ -141,10 +159,12 @@
   <a href="#chemistry">케미 점수</a>
   <a href="#classes">직업 / 종족</a>
   <a href="#elements">속성 시스템</a>
+  <a href="#passives">패시브 시스템</a>
   <a href="#weapons">무기 시스템</a>
   <div class="section-label">콘텐츠</div>
   <a href="#quests">퀘스트 목록</a>
   <a href="#chains">퀘스트 체인</a>
+  <a href="#expedition">정기 원정</a>
   <a href="#buildings">건물 / 룸</a>
   <a href="#economy">경제 시스템</a>
   <div class="section-label">공식</div>
@@ -153,6 +173,10 @@
   <div class="section-label">밸런스</div>
   <a href="#balance">밸런스 참고</a>
   <a href="#tutorial">튜토리얼 흐름</a>
+  <div class="section-label">개발 / 전략</div>
+  <a href="#devhistory">개발 히스토리</a>
+  <a href="#techstack">기술 스택</a>
+  <a href="#success">성공 요인 분석</a>
 </nav>
 
 <!-- Main -->
@@ -160,7 +184,7 @@
 
   <!-- Hero -->
   <div class="hero" id="overview">
-    <p class="label">Game Design Document · v1.1.42 · 2026-04-24</p>
+    <p class="label">Game Design Document · v1.1.68 · 2026-05-07</p>
     <h1>아이언홀드 용병단 길드</h1>
     <p class="sub">중세 암흑 판타지 × 길드 경영 시뮬레이션 — 4_GM</p>
     <div class="badges">
@@ -169,10 +193,11 @@
       <span class="badge badge-green">📜 23 퀘스트</span>
       <span class="badge badge-blue">🗡 15 무기</span>
       <span class="badge badge-red">👥 5 직업 × 4 종족</span>
+      <span class="badge badge-purple">💾 3슬롯 자동저장</span>
     </div>
   </div>
 
-  <!-- ── 세계관 ── -->
+  <!-- 세계관 -->
   <h2 id="world"><span class="icon">🌑</span> 세계관</h2>
   <div class="card">
     <h3>아이언홀드</h3>
@@ -197,12 +222,12 @@
     </div>
   </div>
 
-  <!-- ── 핵심 루프 ── -->
+  <!-- 핵심 루프 -->
   <h2 id="loop"><span class="icon">🔄</span> 핵심 게임 루프</h2>
   <div class="timeline">
     <div class="timeline-item">
       <div class="timeline-label">① 용병 도착</div>
-      <div class="timeline-desc">병영 레벨에 따라 N일마다 용병들이 길드 문에 찾아옴. 고용(비용) or 거절. 🔄 50G로 즉시 새로고침 가능.</div>
+      <div class="timeline-desc">병영 레벨에 따라 N일마다 용병들이 길드 문에 찾아옴. 고용(비용) or 거절. 🔄 150G 일반 새로고침 / 💎 5수정 고급 새로고침 (B급 이상 보장, A/S 확률 대폭 상승).</div>
     </div>
     <div class="timeline-item">
       <div class="timeline-label">② 계약 수주</div>
@@ -210,15 +235,15 @@
     </div>
     <div class="timeline-item">
       <div class="timeline-label">③ 파티 구성</div>
-      <div class="timeline-desc">클릭 or 드래그로 용병을 슬롯에 배치. 속성 일치 시 ✦ 보너스 표시.</div>
+      <div class="timeline-desc">클릭 or 드래그로 용병을 슬롯에 배치. 속성 일치 시 ✦ 보너스 표시. 케미 점수 실시간 표시.</div>
     </div>
     <div class="timeline-item">
       <div class="timeline-label">④ 실시간 파견</div>
-      <div class="timeline-desc">파견 중에도 다른 퀘스트 동시 수행 가능. 타이머 완료 후 성공/실패 판정.</div>
+      <div class="timeline-desc">파견 중에도 다른 퀘스트 동시 수행 가능. 전력 초과 시 클리어 시간 자동 단축. 타이머 완료 후 성공/실패 판정.</div>
     </div>
     <div class="timeline-item">
       <div class="timeline-label">⑤ 보상 수령</div>
-      <div class="timeline-desc">금화·식량·명성·경험치 획득. 사망 시 등급별 장례 비용 차감.</div>
+      <div class="timeline-desc">금화·식량·명성·경험치 획득. 사망 시 등급별 장례 비용 차감. 생존자에게 컨디션/호감도 페널티 적용.</div>
     </div>
     <div class="timeline-item">
       <div class="timeline-label">⑥ 길드 성장</div>
@@ -226,7 +251,7 @@
     </div>
   </div>
 
-  <!-- ── 용병 시스템 ── -->
+  <!-- 용병 시스템 -->
   <h2 id="mercs"><span class="icon">🚶</span> 용병 시스템</h2>
 
   <h3>핵심 스탯</h3>
@@ -284,54 +309,67 @@ favMod = 1 + (favorability - 50) / 500   // 범위: 0.9 ~ 1.1</div>
     훈련소 배치 시 매일 XP 자동 획득 (레벨에 따라 1/3/6 XP).
   </div>
 
-  <!-- ── 나이 시스템 ── -->
+  <h3>캐릭터 스프라이트 시스템 (MercAvatar)</h3>
+  <div class="info-box info-blue">
+    <strong>8개 스프라이트 시트</strong>에서 크롭한 <strong>40종 WebP 스프라이트</strong>가 종족×성별×직업 조합으로 자동 매핑된다.<br>
+    키: <code>{종족}_{성별}_{직업}</code> (예: 인간_남_전사). 총 용량 ~224KB. sharp로 120×160px 크롭·리사이즈.<br>
+    등급별 CSS <code>drop-shadow</code> 글로우: S=핑크, A=골드, B=초록. 원형 클립+SVG 링 방식에서 실제 스프라이트 이미지로 교체.
+  </div>
+
+  <!-- 나이 시스템 -->
   <h2 id="age"><span class="icon">⌛</span> 나이 시스템</h2>
   <div class="info-box info-purple">
-    <strong>30 게임일</strong>마다 용병 나이 +1. 나이에 따라 실효 전력이 감소하며 일정 나이 이상은 파견 자체가 불가능해진다.
+    게임일은 <strong>실제 자정(midnight)</strong>마다 +1 증가. 용병은 게임일 경과에 따라 나이가 들며, 나이가 많을수록 레벨업 시 <strong>능력치 상승률이 낮아진다</strong>. 노쇠·파견 불가 개념은 없음.
   </div>
   <div class="tbl-wrap">
     <table>
-      <thead><tr><th>나이 구간</th><th>상태</th><th>실효 전력</th><th>파견 가능</th><th>비고</th></tr></thead>
+      <thead><tr><th>나이</th><th>레벨업 능력치 배율</th><th>비고</th></tr></thead>
       <tbody>
-        <tr><td>~37세</td><td>청년</td><td>100%</td><td>✅</td><td>페널티 없음</td></tr>
-        <tr><td>38~54세</td><td>노쇠 진행</td><td>100% → 50% (선형)</td><td>✅ (38세 배지 표시)</td><td>매 나이마다 1.47% 감소</td></tr>
-        <tr><td>55세+</td><td>노쇠</td><td>0%</td><td>❌ 파견불가</td><td>길드마스터룸 배치만 가능</td></tr>
+        <tr><td>~20세</td><td>100%</td><td>최대 성장</td></tr>
+        <tr><td>30세</td><td>88%</td><td>성장 소폭 감소</td></tr>
+        <tr><td>40세</td><td>76%</td><td>성장 중폭 감소</td></tr>
+        <tr><td>50세</td><td>64%</td><td></td></tr>
+        <tr><td>60세+</td><td>40% (하한)</td><td>성장 둔화 고정</td></tr>
       </tbody>
     </table>
   </div>
   <h3>나이 동결</h3>
   <div class="card-grid cols-2">
     <div class="card">
-      <h3 style="margin-top:0">💎 나이 동결 비용</h3>
+      <h3 style="margin-top:0">💎 수정 소비처</h3>
       <ul class="dot-list">
-        <li>수정 3개 소비</li>
-        <li>30 게임일 (실시간 150분) 동안 나이 고정</li>
-        <li>동결 중에는 카운트다운 표시</li>
-        <li>동결 해제 후 즉시 재사용 가능</li>
+        <li>나이 동결: <strong>3수정</strong> — 실시간 7일 나이 고정</li>
+        <li>고급 새로고침: <strong>5수정</strong> — 입단 희망자 전원 B급 이상 보장</li>
       </ul>
     </div>
     <div class="card">
-      <h3 style="margin-top:0">📌 운영 팁</h3>
+      <h3 style="margin-top:0">📌 수정 획득처</h3>
       <ul class="dot-list">
-        <li>S/A급 핵심 용병만 선택적 동결 권장</li>
-        <li>55세 도달 전 동결로 무한 연장 가능</li>
-        <li>수정은 용병 사망 시 +1 획득</li>
+        <li>용병 사망 시 +1 수정</li>
+        <li>정기 원정 보상 (순위별 1~15수정)</li>
+        <li>퀘스트 드랍 (일부 고난도)</li>
       </ul>
     </div>
   </div>
 
-  <!-- ── 케미 점수 ── -->
+  <!-- 케미 점수 -->
   <h2 id="chemistry"><span class="icon">🧪</span> 케미 점수 (Chemistry Score)</h2>
-  <p>파티 내 용병들의 협조성·이기심·시너지 요소를 종합해 0~100점의 케미 점수를 산출. 성공률과 사망 위험에 직접 반영된다.</p>
+  <p>파티 내 용병들의 협조성·이기심·시너지·종족·나이·성별을 종합해 0~100점의 케미 점수를 산출. 성공률과 사망 위험에 직접 반영된다.</p>
   <div class="formula">calcChemistryScore(party):
 
-  avgCoop = party 평균 traits.cooperation          // 0~100
-  egoClash = party 내 ego > 70인 용병 수           // "이기적" 판정
-  synergy = party 내 synergy_factor 합계           // 종족·직업별 부여값
+  base = avgCoop × 0.55 + (100 - avgEgo) × 0.35 + (synAvg - 1) × 50
+       - (highEgoCount - 1) × 18                  // 이기적 용병 2명+ 시 충돌 패널티
 
-  score = avgCoop × 0.5
-        + max(0, 50 - egoClash × 15)              // 이기적 용병마다 -15
-        + synergy × 5                              // 시너지 +5/인
+  [종족 다양성]
+  단일 종족: score = base × 0.65 + 70 × 0.35     // 극단 줄이고 평균으로 수렴
+  2종족 혼합: +9  |  3종족: +18  |  4종족: +27   // 다양성 시너지
+
+  [나이 유사성]
+  편차 ≤4세: +10  |  ≤9세: +5                    // 비슷한 또래 보너스
+
+  [성별 혼합]
+  남녀 혼성: +8                                   // 균형잡힌 파티 보너스
+
   → clamp(0, 100)</div>
   <div class="tbl-wrap">
     <table>
@@ -348,19 +386,19 @@ favMod = 1 + (favorability - 50) / 500   // 범위: 0.9 ~ 1.1</div>
     케미 점수 바는 용병을 <strong>2명 이상</strong> 배치했을 때 퀘스트 카드 하단에 실시간 표시된다.
   </div>
 
-  <!-- ── 직업 / 종족 ── -->
+  <!-- 직업 / 종족 -->
   <h2 id="classes"><span class="icon">⚔️</span> 직업 / 종족</h2>
 
   <h3>직업 (5종)</h3>
   <div class="tbl-wrap">
     <table>
-      <thead><tr><th>직업</th><th>아이콘</th><th>공격 배율</th><th>함정 배율</th><th>생존 배율</th><th>비용 배율</th><th>주요 역할</th></tr></thead>
+      <thead><tr><th>직업</th><th>아이콘</th><th>공격 배율</th><th>함정 배율</th><th>생존 배율</th><th>사망률 특성</th><th>주요 역할</th></tr></thead>
       <tbody>
-        <tr><td><strong>전사</strong></td><td>⚔️</td><td>1.05</td><td>0.90</td><td>1.20</td><td>1.10</td><td>탱커·전선 방어, 사망률 -12%</td></tr>
-        <tr><td><strong>궁수</strong></td><td>🏹</td><td>1.30</td><td>0.80</td><td>1.00</td><td>1.05</td><td>원거리 딜러, 함정해제 보조</td></tr>
-        <tr><td><strong>도적</strong></td><td>🗡️</td><td>0.90</td><td>1.40</td><td>0.95</td><td>0.95</td><td>함정해제 특화, 암흑 속성 시너지</td></tr>
-        <tr><td><strong>마법사</strong></td><td>🪄</td><td>1.35</td><td>1.00</td><td>0.90</td><td>1.30</td><td>최고 공격, 단독 취약·힐러 필요</td></tr>
-        <tr><td><strong>성직자</strong></td><td>🕊️</td><td>0.75</td><td>1.00</td><td>1.25</td><td>1.25</td><td>파티 사망률 -35%, 회복·지원</td></tr>
+        <tr><td><strong>전사</strong></td><td>⚔️</td><td>1.05</td><td>0.90</td><td>1.20</td><td>-12% (성직자·마법사 65% 추가 경감)</td><td>탱커·전선 방어, 취약 클래스 보호</td></tr>
+        <tr><td><strong>궁수</strong></td><td>🏹</td><td>1.30</td><td>0.80</td><td>1.00</td><td>함정 퀘스트: 최대 -80%</td><td>원거리 딜러, 함정 특화 생존</td></tr>
+        <tr><td><strong>도적</strong></td><td>🗡️</td><td>0.90</td><td>1.40</td><td>0.95</td><td>함정 퀘스트: 최대 -80%</td><td>함정해제 특화, 파티 사망률 -30%</td></tr>
+        <tr><td><strong>마법사</strong></td><td>🪄</td><td>1.35</td><td>1.00</td><td>0.90</td><td>항상 +40% (전사 동행 시 +20%)</td><td>최고 공격, 단독 취약·전사 보호 필요</td></tr>
+        <tr><td><strong>성직자</strong></td><td>🕊️</td><td>0.75</td><td>1.00</td><td>1.25</td><td>항상 +30% (전사 동행 시 완화)</td><td>파티 사망률 -35%, 전사 보호 필요</td></tr>
       </tbody>
     </table>
   </div>
@@ -381,39 +419,115 @@ favMod = 1 + (favorability - 50) / 500   // 범위: 0.9 ~ 1.1</div>
   <h3>속성 가중치 (직업별 랜덤 속성 확률)</h3>
   <div class="tbl-wrap">
     <table>
-      <thead><tr><th>직업 \ 속성</th><th>🔥 불</th><th>🧊 얼음</th><th>⚡ 번개</th><th>🌿 자연</th><th>🌑 암흑</th><th>✨ 빛</th></tr></thead>
+      <thead><tr><th>직업 \ 속성</th><th>🔥 불</th><th>🧊 얼음</th><th>🌿 자연</th><th>🌑 암흑</th><th>✨ 빛</th></tr></thead>
       <tbody>
-        <tr><td>⚔️ 전사</td><td><strong>5</strong></td><td>2</td><td>2</td><td>1</td><td>0</td><td>0</td></tr>
-        <tr><td>🏹 궁수</td><td>0</td><td>1</td><td>2</td><td><strong>5</strong></td><td>1</td><td>1</td></tr>
-        <tr><td>🗡️ 도적</td><td>0</td><td>1</td><td>2</td><td>1</td><td><strong>5</strong></td><td>1</td></tr>
-        <tr><td>🪄 마법사</td><td>2</td><td><strong>3</strong></td><td><strong>3</strong></td><td>0</td><td>2</td><td>0</td></tr>
-        <tr><td>🕊️ 성직자</td><td>0</td><td>2</td><td>0</td><td>2</td><td>1</td><td><strong>5</strong></td></tr>
+        <tr><td>⚔️ 전사</td><td><strong>5</strong></td><td>2</td><td>1</td><td>0</td><td>0</td></tr>
+        <tr><td>🏹 궁수</td><td>1</td><td>1</td><td><strong>5</strong></td><td>1</td><td>1</td></tr>
+        <tr><td>🗡️ 도적</td><td>0</td><td>1</td><td>1</td><td><strong>5</strong></td><td>1</td></tr>
+        <tr><td>🪄 마법사</td><td>2</td><td><strong>4</strong></td><td>1</td><td>3</td><td>0</td></tr>
+        <tr><td>🕊️ 성직자</td><td>0</td><td>2</td><td>2</td><td>1</td><td><strong>5</strong></td></tr>
       </tbody>
     </table>
   </div>
 
-  <!-- ── 속성 시스템 ── -->
+  <!-- 속성 시스템 -->
   <h2 id="elements"><span class="icon">✨</span> 속성 시스템</h2>
-  <p>용병의 속성이 퀘스트 속성과 일치할 때 <strong>✦ 일치</strong> 보너스 발동.</p>
+  <p>용병 속성과 퀘스트 속성의 관계에 따라 전력·성공률·생존율이 달라진다. 속성별 기계적 효과는 없으며, 상성 관계만 적용된다.</p>
+
+  <h3>상성 관계표</h3>
   <div class="tbl-wrap">
     <table>
-      <thead><tr><th>속성</th><th>일치 효과 (성공률)</th><th>추가 기계 효과</th><th>주 사용 직업</th></tr></thead>
+      <thead><tr><th>관계</th><th>조건</th><th>효과</th></tr></thead>
       <tbody>
-        <tr><td><span class="badge stat-chip el-fire">🔥 불</span></td><td>+13%</td><td>전투력 +15%</td><td>전사</td></tr>
-        <tr><td><span class="badge stat-chip el-ice">🧊 얼음</span></td><td>+8%</td><td>컨디션 소모 -50%</td><td>마법사</td></tr>
-        <tr><td><span class="badge stat-chip el-thunder">⚡ 번개</span></td><td>+9%</td><td>소요시간 -25%</td><td>마법사·도적</td></tr>
-        <tr><td><span class="badge stat-chip el-nature">🌿 자연</span></td><td>+10%</td><td>사망 위험 -35%</td><td>궁수</td></tr>
-        <tr><td><span class="badge stat-chip el-dark">🌑 암흑</span></td><td>+11%</td><td>함정 적중 +15%</td><td>도적</td></tr>
-        <tr><td><span class="badge stat-chip el-light">✨ 빛</span></td><td>+14%</td><td>파티 회생 -30%</td><td>성직자</td></tr>
+        <tr><td>✦ <strong>일치</strong></td><td>용병 속성 = 퀘스트 속성</td><td>생존율 +50% (생존 스탯에 직접 가산)</td></tr>
+        <tr><td>⬆ <strong>상성 유리</strong></td><td>용병이 퀘스트 속성에 강함</td><td>effPower ×1.20 · 성공률 +10%</td></tr>
+        <tr><td>⬇ <strong>상성 불리</strong></td><td>퀘스트 속성이 용병에 강함</td><td>effPower ×0.85 · 성공률 -5%</td></tr>
+        <tr><td>— 중립</td><td>그 외</td><td>보정 없음</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>상성 사이클</h3>
+  <div class="info-box info-gold">
+    <strong>삼각 사이클:</strong> 🔥 불 → 🌿 자연 → 🧊 얼음 → 🔥 불 (강함 방향)<br>
+    <strong>빛/암흑:</strong> ✨ 빛 ↔ 🌑 암흑 (서로 상성 불리)<br>
+    <strong>사망위험 보정:</strong> 일치 ×0.50 · 유리 ×0.85 · 불리 ×1.15<br>
+    <strong>암흑 + 함정 퀘스트:</strong> 암흑 속성 용병 1명당 추가 성공률 +6%
+  </div>
+
+  <!-- 패시브 시스템 -->
+  <h2 id="passives"><span class="icon">⭐</span> 패시브 & 등급 성장 시스템</h2>
+  <p>용병은 등급에 따라 패시브 슬롯이 늘어난다. 10레벨마다 등급이 오르고 새 패시브가 랜덤 배정된다. 특정 패시브 조합은 시너지 보너스를 추가로 제공한다.</p>
+
+  <h3>등급별 패시브 슬롯</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>등급</th><th>D</th><th>C</th><th>B</th><th>A</th><th>S</th></tr></thead>
+      <tbody>
+        <tr><td>패시브 슬롯</td><td>1개</td><td>2개</td><td>3개</td><td>4개</td><td>5개</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>등급 업 조건</h3>
+  <div class="info-box info-gold">
+    <strong>10레벨마다 등급 상승:</strong> Lv10 → C급, Lv20 → B급, Lv30 → A급, Lv40 → S급 (D 시작 기준)<br>
+    이미 S급이거나 시작 등급이 높은 경우 해당 단계는 건너뜀. 등급 상승 시 패시브 1개 랜덤 추가 배정.
+  </div>
+
+  <h3>패시브 효과 종류</h3>
+  <div class="card-grid cols-2">
+    <div class="card">
+      <h3 style="margin-top:0">능력치형</h3>
+      <ul class="dot-list">
+        <li>전력 보너스 (+N)</li>
+        <li>공격력 보너스 (+N)</li>
+        <li>함정해제 보너스 (+N)</li>
+        <li>생존율 보너스 (+N)</li>
+        <li>HP 보너스 (+N)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">특수형</h3>
+      <ul class="dot-list">
+        <li>사망위험 감소 (deathRiskMod)</li>
+        <li>경험치 획득 증가 (xpMod +%)</li>
+        <li>퀘스트 성공 시 사기 보너스</li>
+        <li>길드 명성 추가 획득</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>패시브 시너지</h3>
+  <p>특정 패시브 두 가지를 동시에 보유하면 시너지 보너스가 자동 발동된다. 시너지는 능력치 합산에 추가 반영된다.</p>
+  <div class="info-box">
+    시너지 확인: 용병 상세 모달 하단 "패시브 시너지" 섹션에서 보유 시너지와 효과를 표시.
+  </div>
+
+  <!-- 정기 원정 -->
+  <h2 id="expedition"><span class="icon">⚔</span> 정기 원정</h2>
+  <p>타 길드(NPC)와 전력을 겨루는 콘텐츠. 파견한 용병은 <strong>사망 위험 없이</strong> 6시간 후 귀환하며 순위에 따라 금화·명성·수정·장비를 획득한다. 귀환 후 12시간 쿨다운.</p>
+
+  <h3>원정 보상 (순위별)</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>순위</th><th>금화</th><th>명성</th><th>💎 수정</th><th>경험치</th><th>장비 드랍</th></tr></thead>
+      <tbody>
+        <tr><td>🥇 1위</td><td>600G</td><td>+60</td><td>15</td><td>+500 XP</td><td>✅ 고확률 (고난도)</td></tr>
+        <tr><td>🥈 2위</td><td>400G</td><td>+40</td><td>10</td><td>+350 XP</td><td>✅ (중난도)</td></tr>
+        <tr><td>🥉 3위</td><td>250G</td><td>+25</td><td>6</td><td>+250 XP</td><td>✅ (저난도)</td></tr>
+        <tr><td>4위</td><td>150G</td><td>+15</td><td>3</td><td>+150 XP</td><td>—</td></tr>
+        <tr><td>5위+</td><td>80G</td><td>+8</td><td>1</td><td>+100 XP</td><td>—</td></tr>
       </tbody>
     </table>
   </div>
   <div class="info-box info-gold">
-    <strong>암흑 + 함정 퀘스트:</strong> 암흑 속성 용병 1명당 추가 +8% 성공률<br>
-    <strong>번개 속성 용병:</strong> 파견 소요시간 추가 -12% (최대 -40%)
+    <strong>경쟁 방식:</strong> NPC 점수는 플레이어 파티 전력 ±40% 범위에서 자동 생성 (10팀).<br>
+    <strong>경험치:</strong> 파견된 용병 전원에게 균등 분배. 레벨업 시 등급 업 처리 포함.<br>
+    <strong>수정:</strong> 원정이 수정의 주요 수입원 — 고급 새로고침, 나이 동결에 활용.
   </div>
 
-  <!-- ── 무기 시스템 ── -->
+  <!-- 무기 시스템 -->
   <h2 id="weapons"><span class="icon">🗡</span> 무기 시스템</h2>
   <p>용병은 직업별 무기를 3티어(낡은 → 중급 → 상급)로 업그레이드 가능. 종족 친화 보너스 추가.</p>
 
@@ -477,7 +591,7 @@ favMod = 1 + (favorability - 50) / 500   // 범위: 0.9 ~ 1.1</div>
     </table>
   </div>
 
-  <!-- ── 퀘스트 목록 ── -->
+  <!-- 퀘스트 목록 -->
   <h2 id="quests"><span class="icon">📜</span> 퀘스트 목록 (23종)</h2>
 
   <div class="info-box info-purple">
@@ -594,7 +708,7 @@ ratio > 1.0 → mult = max(0.30, 1.0 - (min(ratio, 3.0) - 1.0) / 2.0 × 0.70)
     </table>
   </div>
 
-  <!-- ── 퀘스트 체인 ── -->
+  <!-- 퀘스트 체인 -->
   <h2 id="chains"><span class="icon">🔗</span> 퀘스트 체인</h2>
   <p>선행 퀘스트를 완료해야 다음 체인 퀘스트가 풀에 출현한다. 체인 마지막 완료 시 스토리 모달 연출.</p>
   <div class="card-grid cols-3">
@@ -647,7 +761,7 @@ ratio > 1.0 → mult = max(0.30, 1.0 - (min(ratio, 3.0) - 1.0) / 2.0 × 0.70)
     </div>
   </div>
 
-  <!-- ── 건물 / 룸 ── -->
+  <!-- 건물 / 룸 -->
   <h2 id="buildings"><span class="icon">🏗</span> 건물 / 룸</h2>
 
   <h3>건물 (5종)</h3>
@@ -705,7 +819,7 @@ ratio > 1.0 → mult = max(0.30, 1.0 - (min(ratio, 3.0) - 1.0) / 2.0 × 0.70)
     길드 Lv1이면 마스터룸을 Lv1까지만 올릴 수 있음.
   </div>
 
-  <!-- ── 경제 시스템 ── -->
+  <!-- 경제 시스템 -->
   <h2 id="economy"><span class="icon">💰</span> 경제 시스템</h2>
 
   <div class="card-grid cols-3">
@@ -716,7 +830,8 @@ ratio > 1.0 → mult = max(0.30, 1.0 - (min(ratio, 3.0) - 1.0) / 2.0 × 0.70)
         <li>건물 건설·업그레이드</li>
         <li>용병 고용 비용</li>
         <li>무기 업그레이드</li>
-        <li>도착 새로고침 (50G)</li>
+        <li>도착 새로고침 (150G)</li>
+        <li>고급 새로고침 (5💎, B급 이상 보장)</li>
         <li>사망 장례 비용 차감</li>
       </ul>
     </div>
@@ -753,7 +868,9 @@ ratio > 1.0 → mult = max(0.30, 1.0 - (min(ratio, 3.0) - 1.0) / 2.0 × 0.70)
         <tr><td>건물 건설</td><td>—</td><td>기본비용</td><td>최초 1회</td></tr>
         <tr><td>건물 업그레이드</td><td>—</td><td>base × 2^lv</td><td>Lv 올릴수록 기하급수적</td></tr>
         <tr><td>무기 업그레이드</td><td>—</td><td>80~280G</td><td>직업별 상이</td></tr>
-        <tr><td>도착 새로고침</td><td>—</td><td>50G</td><td>즉시 실행</td></tr>
+        <tr><td>도착 새로고침</td><td>—</td><td>150G</td><td>즉시 실행</td></tr>
+        <tr><td>고급 새로고침</td><td>—</td><td>5💎</td><td>B급 이상 보장</td></tr>
+        <tr><td>정기 원정 보상</td><td>80~600G</td><td>—</td><td>순위별 차등, 수정·장비 추가</td></tr>
       </tbody>
     </table>
   </div>
@@ -771,7 +888,7 @@ ratio > 1.0 → mult = max(0.30, 1.0 - (min(ratio, 3.0) - 1.0) / 2.0 × 0.70)
     </table>
   </div>
 
-  <!-- ── 전투 공식 ── -->
+  <!-- 전투 공식 -->
   <h2 id="formulas"><span class="icon">📊</span> 전투 공식</h2>
 
   <h3>성공률 계산</h3>
@@ -867,7 +984,7 @@ condition < 50 → ×1.5</div>
 실패 but 전원 귀환:
   생존자 컨디션 -= 5 (패배 피로)</div>
 
-  <!-- ── 길드 레벨 ── -->
+  <!-- 길드 레벨 -->
   <h2 id="guild"><span class="icon">🏰</span> 길드 레벨 시스템</h2>
   <div class="tbl-wrap">
     <table>
@@ -882,19 +999,20 @@ condition < 50 → ×1.5</div>
     </table>
   </div>
 
-  <!-- ── 밸런스 참고 ── -->
+  <!-- 밸런스 참고 -->
   <h2 id="balance"><span class="icon">⚖️</span> 밸런스 참고표</h2>
 
   <h3>등급별 등장 확률 (선술집 레벨별)</h3>
   <div class="tbl-wrap">
     <table>
-      <thead><tr><th>선술집 레벨</th><th>D급</th><th>C급</th><th>B급</th><th>A급</th><th>S급</th></tr></thead>
+      <thead><tr><th>새로고침 방식</th><th>D급</th><th>C급</th><th>B급</th><th>A급</th><th>S급</th></tr></thead>
       <tbody>
-        <tr><td>Lv 0 (없음)</td><td>65%</td><td>30%</td><td>5%</td><td>0%</td><td>0%</td></tr>
-        <tr><td>Lv 1</td><td>60%</td><td>35%</td><td>5%</td><td>0%</td><td>0%</td></tr>
-        <tr><td>Lv 2</td><td>40%</td><td>40%</td><td>18%</td><td>2%</td><td>0%</td></tr>
-        <tr><td>Lv 3</td><td>25%</td><td>35%</td><td>28%</td><td>11%</td><td>1%</td></tr>
-        <tr><td>Lv 4</td><td>15%</td><td>25%</td><td>30%</td><td>25%</td><td>5%</td></tr>
+        <tr><td>일반 (선술집 Lv 0)</td><td>65%</td><td>30%</td><td>5%</td><td>0%</td><td>0%</td></tr>
+        <tr><td>일반 (선술집 Lv 1)</td><td>60%</td><td>35%</td><td>5%</td><td>0%</td><td>0%</td></tr>
+        <tr><td>일반 (선술집 Lv 2)</td><td>40%</td><td>40%</td><td>18%</td><td>2%</td><td>0%</td></tr>
+        <tr><td>일반 (선술집 Lv 3)</td><td>25%</td><td>35%</td><td>28%</td><td>11%</td><td>1%</td></tr>
+        <tr><td>일반 (선술집 Lv 4)</td><td>15%</td><td>25%</td><td>30%</td><td>25%</td><td>5%</td></tr>
+        <tr style="background:rgba(139,92,246,0.1);"><td>💎 고급 새로고침 (5수정)</td><td>0%</td><td>5%</td><td>30%</td><td>45%</td><td>20%</td></tr>
       </tbody>
     </table>
   </div>
@@ -939,7 +1057,7 @@ condition < 50 → ×1.5</div>
     </div>
   </div>
 
-  <!-- ── 튜토리얼 ── -->
+  <!-- 튜토리얼 -->
   <h2 id="tutorial"><span class="icon">📖</span> 튜토리얼 흐름 (6단계)</h2>
   <p>게임 최초 실행 시 6-step 멀티 스텝 튜토리얼 표시. 이전/건너뛰기/다음 내비게이션 제공.</p>
   <div class="tbl-wrap">
@@ -958,10 +1076,203 @@ condition < 50 → ×1.5</div>
 
   <div class="divider"></div>
 
+  <!-- 개발 히스토리 -->
+  <h2 id="devhistory"><span class="icon">🛠</span> 개발 히스토리 (v1.1.0 → v1.1.68)</h2>
+  <p>단일 파일 God Component에서 출발해 기능별 모듈로 분리하고 시스템을 단계적으로 확장한 기록.</p>
+
+  <div class="card" style="margin-bottom:20px;">
+    <div class="ver-row"><span class="ver-tag">v1.1.0</span><span class="ver-desc">초기 커밋 — 단일 App.tsx에 전체 로직 포함</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.10~20</span><span class="ver-desc">파일 분리 리팩토링: weapons / quests / buildings / constants / types / utils 모듈화</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.25</span><span class="ver-desc">SaveSlotScreen 추가 — 3슬롯 localStorage 자동저장/불러오기, completedQuestIds 포함</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.30</span><span class="ver-desc">MercAvatar (절차적 SVG 초상화) + 빌드 스크립트 개선 (구 HTML/EXE 자동 정리)</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.34</span><span class="ver-desc">나이 시스템 + 케미 점수 + 퀘스트 체인 3종 + 스토리 모달 연출</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.38</span><span class="ver-desc">drawQuestPool / instantComplete 버그 수정, 퀘스트 밸런스 조정 (단기 퀘스트 5종 추가)</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.40</span><span class="ver-desc">입단 희망자 버튼 UI 개선 — 고용/거절 세로 분리, 카드 높이 확장</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.41</span><span class="ver-desc">전력 초과 클리어 시간 단축 공식 + 예상 시간 UI 실시간 표시</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.42</span><span class="ver-desc">전투 결과 사망 알림 + 생존자 컨디션/호감도/사기 페널티 연동</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.45</span><span class="ver-desc">캐릭터 스프라이트 시스템 — 8개 PNG 시트 → 40종 WebP (120×160) 크롭, getSprite(race, gender, class) 룩업</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.48</span><span class="ver-desc">건물 레이아웃 영속성 — buildingWidth / roomInsets 4방향 드래그 리사이즈, localStorage 저장</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.50</span><span class="ver-desc">유닛 카드 UI 통합 리뉴얼 — 고용 용병: Lv → XP 게이지 → 이름 → 속성+전력 → 스프라이트(등급 글로우)</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.52</span><span class="ver-desc">입단 희망자 카드 리뉴얼 — 등급 → 이름 → 속성+전력 → 스프라이트. 고용/거절 버튼 제거, 클릭=미리보기 모달</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.55</span><span class="ver-desc">룸별 활동 애니메이션 — gm-report(길드마스터룸) / gm-training(훈련소) / gm-eating(식당) CSS @keyframes</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.56</span><span class="ver-desc">패시브 시스템 — 등급별 슬롯(D:1~S:5), 16종 패시브 풀, 8쌍 시너지. data/passives.ts 분리</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.57</span><span class="ver-desc">등급 업 시스템 — 10레벨마다 등급 상승 + 패시브 추가 배정. 레벨 캡 10 → 50</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.58</span><span class="ver-desc">정기 원정 콘텐츠 — ExpeditionPanel/LaunchModal, NPC 10팀 경쟁, 6시간 실시간, 사망 없음</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.59</span><span class="ver-desc">속성 시스템 고도화 — 상성 사이클(불/자연/얼음/빛/암흑), effPowerVs ×1.20/×0.85, 일치=생존 +50%</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.60</span><span class="ver-desc">직업별 사망률 재설계 — 마법사 ×1.40, 성직자 ×1.30, 도적/궁수 함정 사망률 대폭 감소</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.61</span><span class="ver-desc">케미 점수 고도화 — 종족 다양성, 나이 편차, 성별 혼합 보너스 도입</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.62~63</span><span class="ver-desc">장비 시스템 100종, 세트 정의, 상인 시스템, 던전 시스템</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.64~67</span><span class="ver-desc">원정 보상 확장 — 수정(💎) + 장비 드랍 추가; ExpeditionResult 타입 업데이트</span></div>
+    <div class="ver-row"><span class="ver-tag">v1.1.68</span><span class="ver-desc">💎 고급 새로고침 — 5수정 소비, B급 이상 보장 (C:5%, B:30%, A:45%, S:20%)</span></div>
+  </div>
+
+  <h3>시스템별 구현 현황</h3>
+  <div class="card-grid cols-2">
+    <div class="card">
+      <h3 style="margin-top:0">✅ 구현 완료</h3>
+      <ul class="dot-list">
+        <li>코드 모듈 분리 (9개 파일)</li>
+        <li>3슬롯 저장/불러오기 시스템</li>
+        <li>실제 캐릭터 스프라이트 (40종 WebP)</li>
+        <li>나이 시스템 + 나이 동결</li>
+        <li>케미 점수 (Chemistry Score)</li>
+        <li>퀘스트 체인 3종 + 스토리 모달</li>
+        <li>전력 초과 클리어 시간 단축</li>
+        <li>사망 생존자 페널티 시스템</li>
+        <li>5분 단기 퀘스트 5종</li>
+        <li>6단계 튜토리얼</li>
+        <li>Electron 데스크톱 앱 패키징</li>
+        <li>건물 레이아웃 4방향 드래그 리사이즈 + 저장</li>
+        <li>유닛 카드 UI 통합 (Lv/XP/스프라이트/등급 글로우)</li>
+        <li>입단 희망자 카드 리뉴얼 (미리보기 모달)</li>
+        <li>룸별 활동 애니메이션 (gm-report / gm-training / gm-eating)</li>
+        <li>패시브 시스템 (16종 패시브 + 8쌍 시너지)</li>
+        <li>등급 업 시스템 (10레벨마다, 레벨 캡 50)</li>
+        <li>정기 원정 (사망 없는 6시간 경쟁, 수정·장비 보상)</li>
+        <li>속성 상성 사이클 (effPowerVs 배율 적용)</li>
+        <li>직업별 사망률 재설계 (마법사/성직자/도적/전사)</li>
+        <li>케미 점수 고도화 (종족 다양성·나이 편차·성별 혼합)</li>
+        <li>장비 100종 + 세트 보너스 + 상인 시스템</li>
+        <li>던전 탐사 시스템</li>
+        <li>💎 고급 새로고침 (B급 이상 보장)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">🔜 잠재 확장 영역</h3>
+      <ul class="dot-list">
+        <li>퀘스트 체인 추가 (불/빛 계열)</li>
+        <li>용병 개인 스토리 이벤트</li>
+        <li>길드 명성 랭킹 시스템</li>
+        <li>시즌제 이벤트 퀘스트</li>
+        <li>무기 마스터리 시스템</li>
+        <li>모바일 반응형 레이아웃</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 기술 스택 -->
+  <h2 id="techstack"><span class="icon">⚙️</span> 기술 스택 & 아키텍처</h2>
+  <div class="card-grid cols-3">
+    <div class="card" style="text-align:center">
+      <div style="font-size:24px;">⚛</div>
+      <div style="font-weight:700;color:var(--purple-light);margin:8px 0 4px;">프론트엔드</div>
+      <p class="note">React 18 + TypeScript<br>Vite 빌드, Tailwind CSS</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <div style="font-size:24px;">🖥</div>
+      <div style="font-weight:700;color:var(--purple-light);margin:8px 0 4px;">데스크톱</div>
+      <p class="note">Electron 래퍼<br>단일 EXE 패키징</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <div style="font-size:24px;">💾</div>
+      <div style="font-weight:700;color:var(--purple-light);margin:8px 0 4px;">저장소</div>
+      <p class="note">localStorage 3슬롯<br>외부 DB 불필요</p>
+    </div>
+  </div>
+  <div class="info-box info-purple">
+    <strong>배포 방식:</strong> 단일 HTML 파일 (release/GM-v{version}.html) + Electron EXE 두 가지 포맷 동시 제공.<br>
+    HTML 버전은 서버 없이 브라우저에서 즉시 실행 가능하며, EXE는 프로젝트 루트에 자동 배치된다.
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- 성공 요인 분석 -->
+  <h2 id="success"><span class="icon">🏆</span> 성공 요인 분석</h2>
+  <p style="margin-bottom:24px;">아이언홀드 용병단 길드가 플레이어에게 오래 기억될 게임이 될 수 있는 핵심 요인을 분석한다.</p>
+
+  <h3>① 게임 디자인 강점</h3>
+
+  <div class="success-card factor-gold">
+    <div class="success-sub">핵심 루프</div>
+    <div class="success-title">명확하고 중독적인 고용 → 파견 → 성장 루프</div>
+    <p style="font-size:13px;color:var(--text-dim);">용병 고용, 파티 구성, 퀘스트 파견, 보상 수령, 건물 업그레이드로 이어지는 루프는 짧고 명확하다. 플레이어는 매 결정마다 즉각적인 피드백을 받고, 다음 행동으로 자연스럽게 유도된다. "just one more quest" 효과가 강하게 발동한다.</p>
+  </div>
+
+  <div class="success-card factor-green">
+    <div class="success-sub">감정적 애착</div>
+    <div class="success-title">나이 시스템이 만드는 용병에 대한 감정적 유대</div>
+    <p style="font-size:13px;color:var(--text-dim);">용병이 30일마다 늙고 언젠가 파견 불가 상태가 된다. 플레이어는 성장시킨 S급 용병을 잃지 않기 위해 수정을 아끼고 나이 동결을 고민한다. 단순한 숫자가 아닌 "살아있는 캐릭터"로 느끼게 만드는 핵심 장치다.</p>
+  </div>
+
+  <div class="success-card factor-blue">
+    <div class="success-sub">전략 깊이</div>
+    <div class="success-title">속성 × 직업 × 케미 × 나이 — 다층적 파티 빌딩</div>
+    <p style="font-size:13px;color:var(--text-dim);">단순히 강한 용병을 넣는 것만으로는 최적이 아니다. 속성 일치 보너스, 직업 역할(탱커/힐러/트래퍼), 케미 점수, 나이별 전력, 무기 종족 친화까지 고려해야 한다. 초보자도 진입할 수 있지만 고수에게는 끝없는 최적화 여지가 있다.</p>
+  </div>
+
+  <div class="success-card">
+    <div class="success-sub">긴장감</div>
+    <div class="success-title">실시간 파견 + 퍼마데스 요소의 조합</div>
+    <p style="font-size:13px;color:var(--text-dim);">파견 중 타이머가 실시간으로 흐르고, 완료 후 사망 판정이 실행된다. S급 용병이 사망하면 장례 비용 1,000G가 빠져나가고 생존자의 사기까지 떨어진다. 이 위험성이 파티 구성 한 번 한 번을 긴장되게 만든다.</p>
+  </div>
+
+  <div class="success-card factor-red">
+    <div class="success-sub">스토리 연출</div>
+    <div class="success-title">퀘스트 체인이 부여하는 서사와 목표 의식</div>
+    <p style="font-size:13px;color:var(--text-dim);">밀수의 그림자, 얼음 아래의 비밀, 어둠의 각성 — 3개의 체인은 퀘스트에 이유를 부여한다. 체인 완료 시 연출되는 스토리 모달은 단순 반복 수행을 "이야기의 일부"로 바꿔준다. 플레이어는 다음 체인을 보기 위해 계속 플레이한다.</p>
+  </div>
+
+  <div class="success-card factor-pink">
+    <div class="success-sub">동적 시간</div>
+    <div class="success-title">전력 초과 시 시간 단축 — 성장의 체감을 극대화</div>
+    <p style="font-size:13px;color:var(--text-dim);">초반에 30분 걸리던 퀘스트가 강해진 파티로 9분 만에 끝난다. 성장이 숫자가 아닌 "실제 기다리는 시간의 단축"으로 체감된다. 번개 속성 용병 육성의 동기도 여기서 나온다.</p>
+  </div>
+
+  <h3>② 기술·배포 강점</h3>
+  <div class="card-grid cols-2">
+    <div class="card">
+      <h3 style="margin-top:0">🌐 제로 설치 진입 장벽</h3>
+      <p style="font-size:13px;">단일 HTML 파일 하나로 브라우저에서 즉시 실행된다. 설치, 가입, 인터넷 연결 불필요. 공유와 배포가 극도로 쉽다. "이거 파일 하나야?" 라는 반응이 입소문을 만든다.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">💾 외부 서버 없는 완결성</h3>
+      <p style="font-size:13px;">localStorage 3슬롯 저장으로 서버 비용 없이 완전한 저장 시스템 제공. 서비스 종료 걱정 없이 영구 플레이 가능. 인디 게임의 신뢰성 확보에 결정적.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">🖥 데스크톱 앱 품질</h3>
+      <p style="font-size:13px;">Electron 패키징으로 EXE 더블클릭 실행 지원. 웹 기반이지만 사용자 경험은 네이티브 앱과 동일. 스팀 비공개 배포, 직접 공유 모두 가능.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">📐 1600×900 고정 해상도</h3>
+      <p style="font-size:13px;">고정 캔버스로 UI 일관성이 완벽하게 보장된다. 반응형 레이아웃의 깨짐 없이 설계한 대로 정확하게 표시된다. 디자인 품질이 높아 보이는 효과.</p>
+    </div>
+  </div>
+
+  <h3>③ 시장 포지셔닝</h3>
+  <div class="card-grid cols-3">
+    <div class="card" style="text-align:center">
+      <div style="font-size:24px;">🎮</div>
+      <div style="font-weight:700;color:var(--gold);margin:8px 0 6px;">타깃 장르</div>
+      <p style="font-size:13px;">길드 경영 + 로그라이트 요소. Darkest Dungeon의 긴장감 + Recettear의 경영 감각을 웹에서 구현.</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <div style="font-size:24px;">👤</div>
+      <div style="font-weight:700;color:var(--gold);margin:8px 0 6px;">핵심 유저층</div>
+      <p style="font-size:13px;">전략 경영 게임 팬 / 인디 게임 지지층 / 짧은 플레이 세션을 선호하는 직장인 게이머.</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <div style="font-size:24px;">✅</div>
+      <div style="font-weight:700;color:var(--gold);margin:8px 0 6px;">차별점</div>
+      <p style="font-size:13px;">나이 시스템 + 케미 점수 + 속성 체계가 결합된 파티 빌딩은 동종 장르에서 보기 드문 조합.</p>
+    </div>
+  </div>
+
+  <h3>④ 장기 리텐션 요소</h3>
+  <div class="info-box info-green">
+    <strong>단기 (1~3시간):</strong> 첫 길드 레벨업, 첫 퀘스트 체인 완료, 첫 S급 용병 고용<br>
+    <strong>중기 (3~10시간):</strong> 건물 풀업, 무기 T3 달성, 나이 동결 전략 완성<br>
+    <strong>장기 (10시간+):</strong> 드래곤 토벌 (명성 350 필요), 완벽 파티 구성, 체인 3종 클리어
+  </div>
+  <div class="info-box info-purple">
+    <strong>뉴 게임 리플레이어빌리티:</strong> 랜덤 용병 생성 (속성·종족·등급·성별·이름)으로 매 회차 다른 파티 조합이 나온다. 체인 순서 선택, 건물 업그레이드 우선순위에 따라 플레이스타일이 달라진다.
+  </div>
+
+  <div class="divider"></div>
+
   <!-- Footer -->
   <div style="text-align:center;padding:20px 0;color:var(--text-faint);font-size:12px;">
-    4_GM · 아이언홀드 용병단 길드 기획서 · v1.1.42 · 2026-04-24<br>
-    React 18 + TypeScript · Vite · Tailwind CSS
+    4_GM · 아이언홀드 용병단 길드 기획서 · v1.1.68 · 2026-05-07<br>
+    React 18 + TypeScript · Vite · Tailwind CSS · Electron
   </div>
 
 </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { SaveSlotData } from '../types'
 import { drawQuestPool } from '../utils/quest'
+import { GRADE_PASSIVE_SLOTS, pickRandomPassive } from '../data/passives'
 
 const SAVE_KEY = 'sma_guild_saves'
 const NUM_SLOTS = 3
@@ -57,7 +58,17 @@ export function useSaveLoad() {
         : m
       const legacy = migrated as any
       const migratedEquip = legacy.equipment ?? { weapon: null, head: null, body: null, accessory: null }
-      return { ...migrated, equipment: migratedEquip }
+      // migrate passives + startingGrade
+      const startingGrade = legacy.startingGrade ?? migrated.grade
+      let passives: string[] = legacy.passives ?? []
+      if (passives.length === 0) {
+        const slots = GRADE_PASSIVE_SLOTS[startingGrade] ?? 1
+        for (let i = 0; i < slots; i++) {
+          const p = pickRandomPassive(passives)
+          if (p) passives = [...passives, p]
+        }
+      }
+      return { ...migrated, equipment: migratedEquip, startingGrade, passives }
     }),
     activeQuests: data.activeQuests.map((aq: any) => {
       if (typeof aq.completesAt === 'number') return aq

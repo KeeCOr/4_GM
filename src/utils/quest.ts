@@ -1,7 +1,9 @@
 import type { Mercenary, Quest } from '../types'
 import { ALL_QUESTS } from '../data/quests'
 import { GUILD_MAX_QUEST_DIFF, QUEST_BASE_TIMES_MIN } from '../constants'
-import { effPower, eqTrap, eqAtk, eqSurv, canTrap } from './power'
+import { effPower, effPowerVs, eqTrap, eqAtk, eqSurv, canTrap, passiveDeathMod } from './power'
+
+import { elementRelation } from './elements'
 
 export function computeGuildLevel(fame: number): number {
   const GUILD_LEVEL_FAME = [0, 30, 80, 180, 350] as const
@@ -32,7 +34,7 @@ export function drawQuestPool(hallLevel: number, activeQuestIds: string[], fame:
 
 export function calcQuestDurationMs(quest: Quest, assignedMercs: Mercenary[]): number {
   const baseMins = QUEST_BASE_TIMES_MIN[Math.min(quest.duration - 1, 7)]
-  const totalEff = assignedMercs.reduce((s, m) => s + effPower(m), 0)
+  const totalEff = assignedMercs.reduce((s, m) => s + effPowerVs(m, quest.element), 0)
   const powerRatio = totalEff / quest.difficulty
   let mult = 1.0
   if      (powerRatio >= 2.0) mult = 0.40
@@ -45,25 +47,22 @@ export function calcQuestDurationMs(quest: Quest, assignedMercs: Mercenary[]): n
 export function calcSuccessRate(quest: Quest, assignedIds: string[], allMercs: Mercenary[]): number {
   const assigned = assignedIds.filter(Boolean).map(id => allMercs.find(m => m.id === id)).filter(Boolean) as Mercenary[]
   if (assigned.length === 0) return 0
-  const totalEff = assigned.reduce((s, m) => s + effPower(m), 0)
+  const totalEff = assigned.reduce((s, m) => s + effPowerVs(m, quest.element), 0)
   const powerRatio = totalEff / quest.difficulty
   let rate = Math.round(Math.min(95, powerRatio * 75 + 10))
   const classes = assigned.map(m => m.class)
   if (classes.includes('성직자')) rate = Math.min(95, rate + 8)
   if (classes.includes('전사'))   rate = Math.min(95, rate + 3)
   if (classes.includes('도적') && (quest.trapFocus || quest.conditionDrain >= 20)) rate = Math.min(95, rate + 10)
-  for (const m of assigned.filter(m => m.element === quest.element)) {
-    switch (m.element) {
-      case '불':   rate = Math.min(95, rate + 13); break
-      case '얼음': rate = Math.min(95, rate + 8);  break
-      case '자연': rate = Math.min(95, rate + 10); break
-      case '암흑': rate = Math.min(95, rate + 11); break
-      case '빛':   rate = Math.min(95, rate + 14); break
-    }
+  // 속성 상성 효과 (상성 이득 → 성공률 보정)
+  for (const m of assigned) {
+    const rel = elementRelation(m.element, quest.element)
+    if (rel === 'advantage') rate = Math.min(95, rate + 10)
+    else if (rel === 'disadvantage') rate = Math.max(5, rate - 5)
   }
   if (quest.trapFocus && quest.element === '암흑') {
     const darkMatch = assigned.filter(m => m.element === '암흑').length
-    rate = Math.min(95, rate + darkMatch * 8)
+    rate = Math.min(95, rate + darkMatch * 6)
   }
   if (quest.trapFocus) {
     const totalTrap = assigned.filter(m => canTrap(m)).reduce((s, m) => s + m.trap_disarm + eqTrap(m), 0)
@@ -82,15 +81,18 @@ export function calcSuccessRate(quest: Quest, assignedIds: string[], allMercs: M
 export function calcMercDeathRisk(quest: Quest, merc: Mercenary, party: Mercenary[]): number {
   let risk = quest.deathRisk
   const partySize = party.length
-  const totalPartyEff = party.reduce((s, m) => s + effPower(m), 0)
+  const totalPartyEff = party.reduce((s, m) => s + effPowerVs(m, quest.element), 0)
   const powerRatio = totalPartyEff / quest.difficulty
   if      (powerRatio < 0.4)  risk *= 5.0
   else if (powerRatio < 0.6)  risk *= 3.0
   else if (powerRatio < 0.8)  risk *= 1.8
   else if (powerRatio < 0.95) risk *= 1.2
   else if (powerRatio >= 1.5) risk *= 0.6
-  if (quest.conditionDrain >= 20 && canTrap(merc)) {
-    risk *= Math.max(0.5, 1.6 - (merc.trap_disarm + eqTrap(merc)) / 35)
+  if (quest.trapFocus && canTrap(merc)) {
+    // 도적/궁수는 함정 퀘스트에서 사망률 대폭 감소
+    risk *= Math.max(0.2, 1.8 - (merc.trap_disarm + eqTrap(merc)) / 25)
+  } else if (quest.conditionDrain >= 20 && canTrap(merc)) {
+    risk *= Math.max(0.45, 1.5 - (merc.trap_disarm + eqTrap(merc)) / 40)
   }
   if (quest.deathRisk >= 0.12) {
     risk *= Math.max(0.55, 1.45 - (merc.stats.공격력 + eqAtk(merc)) / 55)
@@ -101,24 +103,32 @@ export function calcMercDeathRisk(quest: Quest, merc: Mercenary, party: Mercenar
   risk *= Math.max(0.28, 1 - (merc.stats.생존율 + eqSurv(merc)) / 120)
   const partyClasses = party.map(m => m.class)
   if (partyClasses.includes('성직자')) risk *= 0.65
-  if (partyClasses.includes('전사') && merc.class !== '전사') risk *= 0.82
-  if (partyClasses.includes('도적') && quest.conditionDrain >= 20) risk *= 0.78
+  if (partyClasses.includes('전사') && merc.class !== '전사') {
+    // 전사는 취약한 클래스(성직자·마법사)를 우선 보호
+    risk *= (merc.class === '성직자' || merc.class === '마법사') ? 0.65 : 0.82
+  }
+  if (quest.trapFocus && (partyClasses.includes('도적') || partyClasses.includes('궁수'))) risk *= 0.70
   if (partySize < 3) {
     const survNorm = merc.stats.생존율 / 100
     risk *= 1.0 + (1 - partySize / 3) * (1.2 - survNorm * 0.9)
   }
   const avgCoop = party.reduce((s, m) => s + m.traits.cooperation, 0) / partySize
   risk *= Math.max(0.72, 1.25 - avgCoop / 65)
-  if (merc.class === '마법사' && quest.deathRisk < 0.12 && !partyClasses.includes('성직자')) risk *= 1.18
-  if (merc.class === '성직자') risk *= 0.72
+  // 클래스별 고유 사망률 특성
+  if (merc.class === '마법사') risk *= 1.40  // 공격력↑ 생존력↓
+  if (merc.class === '성직자') risk *= 1.30  // 전투 취약 (전사 동행 시 완화)
   if (merc.class === '전사')   risk *= 0.88
   if (partySize >= 2) {
     const partyAvgEff = totalPartyEff / partySize
-    const relStrength = effPower(merc) / Math.max(1, partyAvgEff)
+    const relStrength = effPowerVs(merc, quest.element) / Math.max(1, partyAvgEff)
     risk *= Math.max(0.65, Math.min(2.4, Math.pow(1 / Math.max(0.1, relStrength), 0.75)))
   }
-  if (merc.element === '자연' && quest.element === '자연') risk *= 0.65
-  const lightMatchCount = party.filter(m => m.element === '빛' && quest.element === '빛').length
-  if (lightMatchCount > 0) risk *= Math.pow(0.72, lightMatchCount)
+  // 속성 일치/상성 사망률 보정
+  const rel = elementRelation(merc.element, quest.element)
+  if (rel === 'match')             risk *= 0.50
+  else if (rel === 'advantage')    risk *= 0.85
+  else if (rel === 'disadvantage') risk *= 1.15
+  // 패시브 사망률 보정
+  risk *= passiveDeathMod(merc)
   return Math.min(0.98, Math.max(0.01, risk))
 }

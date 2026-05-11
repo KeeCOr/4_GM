@@ -2,17 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { initialMercenaries, ALL_QUESTS, generateMercenary, EXP_TO_NEXT, RACE_BONUS_DESC } from './data/mercenaries'
 import { EQUIPMENT_POOL, findEquip, getEquipped, getSetBonuses, powerScore, rollQuestDrop, generateMerchantStock, questTier } from './data/equipment'
 import { createDungeon, DUNGEON_TRIGGER_CHANCE, dungeonFloorDifficulty, dungeonFloorDeathRisk, dungeonFloorGold, dungeonFloorXp } from './data/dungeons'
-import { effPower, combatPower, canTrap, eqAtk, eqTrap, eqSurv } from './utils/power'
+import { effPower, effPowerVs, combatPower, canTrap, eqAtk, eqTrap, eqSurv, passiveDeathMod } from './utils/power'
+import { elementRelation } from './utils/elements'
+import { getMercPassiveStats, GRADE_PASSIVE_SLOTS, pickRandomPassive, PASSIVE_POOL, PASSIVE_SYNERGIES, findPassive } from './data/passives'
 import { StatRadar } from './components/StatRadar'
 import { MercAvatar } from './components/MercAvatar'
 import { EquipmentModal } from './components/EquipmentModal'
 import { MerchantPanel } from './components/MerchantPanel'
 import { DungeonPanel } from './components/DungeonPanel'
+import { ExpeditionPanel, ExpeditionLaunchModal } from './components/ExpeditionPanel'
 import { useMerchant } from './hooks/useMerchant'
 import { useDungeon } from './hooks/useDungeon'
 import { getSprite } from './assets/Character/sprites'
 import bgBase from './assets/BG/BG_Base.jpg'
-import type { Mercenary, Quest, ActiveQuest, GuildBuildings, CampaignState, Equipment, EquipSlot, MerchantState, ActiveDungeon, SaveSlotData } from './types'
+import type { Mercenary, Quest, ActiveQuest, GuildBuildings, CampaignState, Equipment, EquipSlot, MerchantState, ActiveDungeon, ActiveExpedition, ExpeditionResult, SaveSlotData } from './types'
 
 // ── Display helpers ────────────────────────────────────────────────────────
 
@@ -40,6 +43,7 @@ const gradeBg = (g: string) =>
 // 미션 급여: 등급별 1일당 지급액 (퀘스트 완료 시 duration만큼 정산)
 const MISSION_PAY_PER_DAY: Record<string, number> = { D: 4, C: 10, B: 45, A: 90, S: 160 }
 const ARRIVAL_REFRESH_COST = 150
+const PREMIUM_REFRESH_COST = 5   // crystals
 
 // 호감도 이모지
 const favEmoji = (fav: number) =>
@@ -54,7 +58,27 @@ function calcChemistryScore(party: Mercenary[]): number {
   const highEgoCount = party.filter(m => m.traits.ego > 70).length
   const clashPenalty = highEgoCount >= 2 ? (highEgoCount - 1) * 18 : 0
   const synAvg = party.reduce((s, m) => s + m.traits.synergy_factor, 0) / party.length
-  const score = avgCoop * 0.55 + (100 - avgEgo) * 0.35 + (synAvg - 1) * 50 - clashPenalty
+  let score = avgCoop * 0.55 + (100 - avgEgo) * 0.35 + (synAvg - 1) * 50 - clashPenalty
+
+  // 종족 다양성: 같은 종족이면 무난하게 수렴, 다른 종족이 섞일수록 시너지↑
+  const uniqueRaces = new Set(party.map(m => m.race)).size
+  if (uniqueRaces === 1) {
+    score = score * 0.65 + 70 * 0.35  // 단일 종족: 극단을 줄이고 평균으로 수렴
+  } else {
+    score += (uniqueRaces - 1) * 9    // 2종족: +9, 3종족: +18, 4종족: +27
+  }
+
+  // 나이대 유사성: 편차가 작을수록 보너스
+  const ages = party.map(m => m.age)
+  const avgAge = ages.reduce((a, b) => a + b, 0) / ages.length
+  const ageDev = ages.reduce((s, a) => s + Math.abs(a - avgAge), 0) / ages.length
+  if (ageDev <= 4)       score += 10
+  else if (ageDev <= 9)  score += 5
+
+  // 성별 혼합 보너스
+  const uniqueGenders = new Set(party.map(m => m.traits.gender)).size
+  if (uniqueGenders > 1) score += 8
+
   return Math.max(0, Math.min(100, Math.round(score)))
 }
 // combatPower and canTrap imported from utils/power
@@ -370,12 +394,33 @@ function MercCard({
               : <div className="text-sm font-bold text-amber-300">{MISSION_PAY_PER_DAY[merc.grade] ?? 4}G<span className="text-slate-600">/일</span></div>
           }
           {merc.condition < 10 && <div className="text-xs font-bold rounded px-1 py-0.5" style={{ background: 'rgba(239,68,68,0.4)', color: '#fca5a5' }}>⛔파견불가</div>}
-          {merc.age >= 55 && merc.status !== '영혼' && <div className="text-xs font-bold rounded px-1 py-0.5" style={{ background: 'rgba(100,60,20,0.6)', color: '#d4a574' }}>👴노쇠</div>}
-          {merc.age >= 38 && merc.age < 55 && <div className="text-xs" style={{ color: 'rgba(180,140,80,0.7)' }}>👴{merc.age}세</div>}
+          {merc.age >= 30 && <div className="text-xs" style={{ color: 'rgba(180,140,80,0.7)' }}>{merc.age}세</div>}
         </div>
       </div>
     </div>
   )
+}
+
+/** 나이가 많을수록 레벨업 시 능력치 상승 감소 (age 20: 100%, age 50: 64%, age 70: 40%) */
+function ageLevelFactor(age: number): number {
+  return Math.max(0.4, 1 - Math.max(0, age - 20) * 0.012)
+}
+
+const GRADE_ORDER: Mercenary['grade'][] = ['D', 'C', 'B', 'A', 'S']
+
+/** 레벨업 후 등급 상승 처리. S급 시작 캐릭터는 등급 상승 없음. */
+function applyGradeUp(m: Mercenary, newLevel: number, logLines: string[]): Mercenary {
+  if (m.startingGrade === 'S') return m
+  if (m.grade === 'S') return m
+  if (newLevel % 10 !== 0) return m
+  const nextGradeIdx = GRADE_ORDER.indexOf(m.grade) + 1
+  if (nextGradeIdx >= GRADE_ORDER.length) return m
+  const newGrade = GRADE_ORDER[nextGradeIdx]
+  const newPassive = pickRandomPassive(m.passives)
+  const newPassives = newPassive ? [...m.passives, newPassive] : m.passives
+  const p = newPassive ? findPassive(newPassive) : null
+  logLines.push(`⬆ ${m.name} 등급 ${m.grade}→${newGrade} 승급! 패시브 해금: ${p?.name ?? '없음'}`)
+  return { ...m, grade: newGrade, passives: newPassives }
 }
 
 // ── Quest Calculations (pure, module-level) ───────────────────────────────
@@ -383,29 +428,25 @@ function MercCard({
 function calcSuccessRate(quest: Quest, assignedIds: string[], allMercs: Mercenary[]): number {
   const assigned = assignedIds.filter(Boolean).map(id => allMercs.find(m => m.id === id)).filter(Boolean) as Mercenary[]
   if (assigned.length === 0) return 0
-  const totalEff = assigned.reduce((s, m) => s + effPower(m), 0)
+  const totalEff = assigned.reduce((s, m) => s + effPowerVs(m, quest.element), 0)
   const powerRatio = totalEff / quest.difficulty
   // base: 0 power=10%, 1x=85%, capped 95%
   let rate = Math.round(Math.min(95, powerRatio * 75 + 10))
   // Class bonuses
   const classes = assigned.map(m => m.class)
-  if (classes.includes('성직자')) rate = Math.min(95, rate + 8)   // healer buffs party
-  if (classes.includes('전사'))   rate = Math.min(95, rate + 3)   // frontline stability
+  if (classes.includes('성직자')) rate = Math.min(95, rate + 8)
+  if (classes.includes('전사'))   rate = Math.min(95, rate + 3)
   if (classes.includes('도적') && (quest.trapFocus || quest.conditionDrain >= 20)) rate = Math.min(95, rate + 10)
-  // 속성 일치: 속성별 고유 성공률 보너스
-  for (const m of assigned.filter(m => m.element === quest.element)) {
-    switch (m.element) {
-      case '불':   rate = Math.min(95, rate + 13); break  // 전투력 폭발적 증가
-      case '얼음': rate = Math.min(95, rate + 8);  break  // 컨디션 절약, 안정형
-      case '자연': rate = Math.min(95, rate + 10); break  // 생존·지속 특화
-      case '암흑': rate = Math.min(95, rate + 11); break  // 은밀·함정 특화
-      case '빛':   rate = Math.min(95, rate + 14); break  // 파티 지원·회복
-    }
+  // 속성 상성 효과 (상성 이득 → 성공률 보정)
+  for (const m of assigned) {
+    const rel = elementRelation(m.element, quest.element)
+    if (rel === 'advantage') rate = Math.min(95, rate + 10)
+    else if (rel === 'disadvantage') rate = Math.max(5, rate - 5)
   }
   // 암흑 속성 + 함정 집중 퀘스트: 추가 보너스
   if (quest.trapFocus && quest.element === '암흑') {
     const darkMatch = assigned.filter(m => m.element === '암흑').length
-    rate = Math.min(95, rate + darkMatch * 8)
+    rate = Math.min(95, rate + darkMatch * 6)
   }
   // 함정 퀘스트: 도적·궁수의 함정해제 합산이 높으면 보너스
   if (quest.trapFocus) {
@@ -451,7 +492,7 @@ function calcMercDeathRisk(quest: Quest, merc: Mercenary, party: Mercenary[]): n
   const partySize = party.length
 
   // ── 0. 파티 전력 vs 요구 전력 — 전력 부족 시 사망률 급증 ──
-  const totalPartyEff = party.reduce((s, m) => s + effPower(m), 0)
+  const totalPartyEff = party.reduce((s, m) => s + effPowerVs(m, quest.element), 0)
   const powerRatio = totalPartyEff / quest.difficulty
   if      (powerRatio < 0.4) risk *= 5.0   // 심각한 전력 부족: 학살 수준
   else if (powerRatio < 0.6) risk *= 3.0   // 전력 크게 부족
@@ -460,10 +501,11 @@ function calcMercDeathRisk(quest: Quest, merc: Mercenary, party: Mercenary[]): n
   else if (powerRatio >= 1.5) risk *= 0.6  // 압도적 전력: 위험 감소
 
   // ── 1. 퀘스트 종류별 요구 능력치 ──────────────────
-  // 함정/던전형 (conditionDrain ≥ 20): 도적·궁수의 함정해제 능력이 낮으면 위험
-  if (quest.conditionDrain >= 20 && canTrap(merc)) {
-    const trapFactor = Math.max(0.5, 1.6 - (merc.trap_disarm + eqTrap(merc)) / 35)
-    risk *= trapFactor
+  // 함정 퀘스트: 도적·궁수 대폭 생존율 향상
+  if (quest.trapFocus && canTrap(merc)) {
+    risk *= Math.max(0.2, 1.8 - (merc.trap_disarm + eqTrap(merc)) / 25)
+  } else if (quest.conditionDrain >= 20 && canTrap(merc)) {
+    risk *= Math.max(0.45, 1.5 - (merc.trap_disarm + eqTrap(merc)) / 40)
   }
   // 전투형 (deathRisk ≥ 0.12): 공격력이 낮으면 적에게 압도됨
   if (quest.deathRisk >= 0.12) {
@@ -491,10 +533,12 @@ function calcMercDeathRisk(quest: Quest, merc: Mercenary, party: Mercenary[]): n
 
   // 성직자: 파티 전원 회복 → 사망률 대폭 감소
   if (hasHealer) risk *= 0.65
-  // 전사: 비전사 용병을 방어 → 전선 뒤쪽 직업 보호
-  if (hasTank && merc.class !== '전사') risk *= 0.82
-  // 도적: 함정 퀘스트에서 파티 전원 보호
-  if (hasRogue && quest.conditionDrain >= 20) risk *= 0.78
+  // 전사: 취약 클래스(성직자·마법사) 우선 보호
+  if (hasTank && merc.class !== '전사') {
+    risk *= (merc.class === '성직자' || merc.class === '마법사') ? 0.65 : 0.82
+  }
+  // 도적/궁수: 함정 퀘스트에서 파티 전원 보호
+  if (quest.trapFocus && (hasRogue || partyClasses.includes('궁수'))) risk *= 0.70
 
   // ── 4. 소규모 파티 페널티 — 등급 무관, 스탯 기반 ─
   if (partySize < 3) {
@@ -510,21 +554,18 @@ function calcMercDeathRisk(quest: Quest, merc: Mercenary, party: Mercenary[]): n
   const coopFactor = Math.max(0.72, 1.25 - avgCoop / 65)
   risk *= coopFactor
 
-  // ── 6. 직업-퀘스트 미스매치 페널티 ──────────────────
-  // 마법사: 근접전/저위험 퀘스트에서 근접 방어력 부재
-  if (merc.class === '마법사' && quest.deathRisk < 0.12 && !hasHealer) risk *= 1.18
-  // 성직자: 후방 유지로 위험 낮음
-  if (merc.class === '성직자') risk *= 0.72
-  // 전사: 어떤 퀘스트든 내구력으로 버팀
-  if (merc.class === '전사') risk *= 0.88
+  // ── 6. 직업별 고유 사망률 특성 ──────────────────────
+  if (merc.class === '마법사') risk *= 1.40  // 공격력↑ 생존력↓
+  if (merc.class === '성직자') risk *= 1.30  // 전투 취약 (전사 동행 시 완화)
+  if (merc.class === '전사')   risk *= 0.88
 
   // ── 7. 파티 내 상대 전력 — 가장 약한 유닛이 먼저 쓰러짐 ──
   // 파티 평균 실효 전력 대비 이 유닛이 얼마나 약한가를 사망률에 반영
   // relStrength < 1 → 평균보다 약함 → 사망률 급증
   // relStrength > 1 → 평균보다 강함 → 사망률 완만 감소
   if (partySize >= 2) {
-    const partyAvgEff = party.reduce((s, m) => s + effPower(m), 0) / partySize
-    const mercEff = effPower(merc)
+    const partyAvgEff = party.reduce((s, m) => s + effPowerVs(m, quest.element), 0) / partySize
+    const mercEff = effPowerVs(merc, quest.element)
     const relStrength = mercEff / Math.max(1, partyAvgEff)
     // pow(1/rel, 0.75): rel=1.0 → ×1.0, rel=0.5 → ×1.68, rel=0.3 → ×2.4, rel=1.5 → ×0.74
     const relFactor = Math.max(0.65, Math.min(2.4, Math.pow(1 / Math.max(0.1, relStrength), 0.75)))
@@ -537,12 +578,13 @@ function calcMercDeathRisk(quest: Quest, merc: Mercenary, party: Mercenary[]): n
   else if (chem < 40)  risk *= 1.30
   else if (chem < 60)  risk *= 1.12
 
-  // ── 8. 속성 효과 ────────────────────────────────────────
-  // 🌿 자연 속성 일치: 이 용병의 사망 위험 -35%
-  if (merc.element === '자연' && quest.element === '자연') risk *= 0.65
-  // ✨ 빛 속성 일치 파티원: 파티 전원 사망 위험 -30% (누적 가능)
-  const lightMatchCount = party.filter(m => m.element === '빛' && quest.element === '빛').length
-  if (lightMatchCount > 0) risk *= Math.pow(0.72, lightMatchCount)
+  // ── 8. 속성 일치/상성 사망률 보정 ──────────────────────
+  const elemRel = elementRelation(merc.element, quest.element)
+  if (elemRel === 'match')             risk *= 0.50
+  else if (elemRel === 'advantage')    risk *= 0.85
+  else if (elemRel === 'disadvantage') risk *= 1.15
+  // ── 9. 패시브 사망률 보정 ──────────────────────────────
+  risk *= passiveDeathMod(merc)
 
   return Math.min(0.98, Math.max(0.01, risk))
 }
@@ -580,7 +622,8 @@ function App() {
     hall: 1, barracks: 1, training: 1, tavern: 0, infirmary: 0
   })
   const [state, setState] = useState<CampaignState>({
-    day: 1, gold: 380, fame: 5, morale: 80, crystals: 5
+    day: 1, gold: 380, fame: 5, morale: 80, crystals: 5,
+    lastDayDate: new Date().toISOString().slice(0, 10),
   })
   const [questLog, setQuestLog] = useState<string[]>(['길드가 설립되었습니다. 계약을 수행해 명성을 쌓으세요.'])
 
@@ -608,6 +651,7 @@ function App() {
   const [scale, setScale] = useState(() => Math.min(window.innerWidth / 1600, window.innerHeight / 900))
   const [zoomDelta, setZoomDelta] = useState(0)
   const [previewArrival, setPreviewArrival] = useState<Mercenary | null>(null)
+  const [roomMercPreview, setRoomMercPreview] = useState<Mercenary | null>(null)
   const [buildingWidth, setBuildingWidth] = useState<number>(() => {
     try { const v = localStorage.getItem('gm_buildingWidth'); return v ? Number(v) : 58 } catch { return 58 }
   })
@@ -675,9 +719,12 @@ function App() {
   const [guildInventory, setGuildInventory] = useState<Equipment[]>([])
   const [merchantState, setMerchantState] = useState<MerchantState | null>(null)
   const [activeDungeon, setActiveDungeon] = useState<ActiveDungeon | null>(null)
+  const [activeExpedition, setActiveExpedition] = useState<ActiveExpedition | null>(null)
+  const [expeditionNextAt, setExpeditionNextAt] = useState(0)
   const [showEquipModal, setShowEquipModal] = useState<string | null>(null)
   const [showMerchant, setShowMerchant] = useState(false)
   const [showDungeon, setShowDungeon] = useState(false)
+  const [showExpedition, setShowExpedition] = useState(false)
   const [pendingDrop, setPendingDrop] = useState<Equipment | null>(null)
   const [questsCompletedToday, setQuestsCompletedToday] = useState(0)
   const [deathsToday, setDeathsToday] = useState(0)
@@ -685,8 +732,11 @@ function App() {
 
   // ── Derived ──────────────────────────────────────
   const deployedMercIds = useMemo(
-    () => new Set(activeQuests.flatMap(aq => aq.assignedMercIds)),
-    [activeQuests]
+    () => new Set([
+      ...activeQuests.flatMap(aq => aq.assignedMercIds),
+      ...(activeExpedition && !activeExpedition.result ? activeExpedition.assignedMercIds : []),
+    ]),
+    [activeQuests, activeExpedition]
   )
   const pendingMercIds = useMemo(
     () => new Set(Object.values(pendingAssign).flat()),
@@ -767,15 +817,30 @@ function App() {
     log(`🔄 도착 목록 새로고침 (-${ARRIVAL_REFRESH_COST}G)`)
   }
 
+  const premiumRefreshArrivals = () => {
+    const crystals = state.crystals ?? 0
+    if (crystals < PREMIUM_REFRESH_COST) { log(`수정 부족: 고급 새로고침 불가 (💎${PREMIUM_REFRESH_COST} 필요)`); return }
+    setState(prev => ({ ...prev, crystals: (prev.crystals ?? 0) - PREMIUM_REFRESH_COST }))
+    const diningLv = roomLevels['식당'] ?? 1
+    const cnt = arrivalCount(buildings.barracks) + diningArrivalBonus(diningLv)
+    setGateArrivals(Array.from({ length: cnt }, () => generateMercenary(buildings.tavern + diningTavernBonus(diningLv), true)))
+    log(`💎 고급 새로고침! B급 이상 보장 (-${PREMIUM_REFRESH_COST}💎)`)
+  }
+
   const dismissArrival = (mercId: string) => {
     setGateArrivals(prev => prev.filter(m => m.id !== mercId))
   }
 
+  const DEPARTURE_NOTICE_MS = 7 * 24 * 60 * 60 * 1000  // 7 real days
+
   const dismissMerc = (merc: Mercenary) => {
     if (merc.status === '파견중') { log(`${merc.name}은 파견 중이라 해고할 수 없습니다.`); return }
-    setMercs(prev => prev.filter(m => m.id !== merc.id))
+    if (merc.leavingAt) { log(`${merc.name}은 이미 퇴단 예고 중입니다.`); return }
+    const leavingAt = Date.now() + DEPARTURE_NOTICE_MS
+    setMercs(prev => prev.map(m => m.id === merc.id ? { ...m, leavingAt } : m))
     setSelectedMercDetail(null)
-    log(`${merc.name} 해고. (잔여 급여 정산 없음)`)
+    setRoomMercPreview(null)
+    log(`📜 ${merc.name}이(가) 퇴단을 예고했습니다. 7일 후 길드를 떠납니다.`)
   }
 
   /** Roll for quest drop and dungeon trigger */
@@ -878,12 +943,6 @@ function App() {
       log(`⛔ ${tooTired.map(m => m.name).join(', ')} — 컨디션 10 미만으로 파견 불가. 회복시키세요.`)
       return
     }
-    // 나이 55세 이상 → 파견 불가
-    const tooOld = assignedMercs.filter(m => m.age >= 55)
-    if (tooOld.length > 0) {
-      log(`⛔ ${tooOld.map(m => m.name).join(', ')} — 55세 이상으로 전선 투입 불가.`)
-      return
-    }
     const durationMs = calcQuestDurationMs(quest, assignedMercs)
     const completesAt = Date.now() + durationMs
     const mins = Math.round(durationMs / 60000)
@@ -919,11 +978,82 @@ function App() {
     log(`✨ ${merc.name} 부활! (-${cost}G) — 극도로 쇠약한 상태, 회복에 시간이 필요합니다`)
   }
 
+  // ── 정기 원정 ─────────────────────────────────────────────────────────────
+  const EXPEDITION_DURATION_MS = 6 * 60 * 60 * 1000   // 6시간
+  const EXPEDITION_COOLDOWN_MS = 12 * 60 * 60 * 1000  // 12시간 쿨다운
+
+  const launchExpedition = (mercIds: string[]) => {
+    if (mercIds.length === 0) { log('원정에 보낼 용병을 선택하세요'); return }
+    if (activeExpedition && !activeExpedition.result) { log('이미 원정 중입니다'); return }
+    if (expeditionNextAt > Date.now()) { log('원정 쿨다운 중입니다'); return }
+    const assigned = mercIds.map(id => mercs.find(m => m.id === id)).filter(Boolean) as Mercenary[]
+    const partyPower = assigned.reduce((s, m) => s + effPower(m), 0)
+    // 경쟁자 전력 생성 (플레이어 전력 기준 ±40%)
+    const spread = partyPower * 0.4
+    const npcCount = 5 + Math.floor(Math.random() * 4)  // 6~9팀
+    const npcScores = Array.from({ length: npcCount }, () =>
+      Math.round(partyPower * 0.6 + Math.random() * spread * 2)
+    )
+    const now = Date.now()
+    const expedition: ActiveExpedition = {
+      id: `exp-${now}`,
+      assignedMercIds: mercIds,
+      startedAt: now,
+      completesAt: now + EXPEDITION_DURATION_MS,
+      npcScores,
+      nextAvailableAt: now + EXPEDITION_DURATION_MS + EXPEDITION_COOLDOWN_MS,
+    }
+    setActiveExpedition(expedition)
+    setMercs(prev => prev.map(m => mercIds.includes(m.id) ? { ...m, status: '파견중' } : m))
+    setShowExpedition(true)
+    log(`⚔ 원정 출발! ${assigned.map(m => m.name).join(', ')} — 6시간 후 귀환`)
+  }
+
+  const claimExpedition = () => {
+    if (!activeExpedition?.result) return
+    const { result } = activeExpedition
+    setState(prev => ({
+      ...prev,
+      gold: prev.gold + result.goldReward,
+      fame: prev.fame + result.fameReward,
+      crystals: (prev.crystals ?? 0) + (result.crystalReward ?? 0),
+    }))
+    if (result.equipReward) {
+      setGuildInventory(prev => [...prev, result.equipReward!])
+    }
+    const xpEach = result.xpReward
+    setMercs(prev => prev.map(m => {
+      if (!activeExpedition.assignedMercIds.includes(m.id)) return m
+      const { xpMod } = getMercPassiveStats(m.passives ?? [])
+      const xpGain = Math.round(xpEach * (1 + xpMod))
+      let exp = m.experience + xpGain, level = m.level, expToNext = m.expToNext
+      const logLines: string[] = []
+      let updated = m
+      while (exp >= expToNext && level < 50) {
+        exp -= expToNext; level++; expToNext = EXP_TO_NEXT(level)
+        updated = applyGradeUp(updated, level, logLines)
+      }
+      const sb = level - m.level
+      const af = ageLevelFactor(m.age)
+      logLines.forEach(l => log(l))
+      return { ...updated, status: '대기중', level, experience: exp, expToNext,
+        power: m.power + Math.round(sb * 4 * af),
+        trap_disarm: m.trap_disarm + Math.round(sb * 2 * af),
+        stats: { 공격력: m.stats.공격력 + Math.round(sb * 2 * af), 함정해제: m.stats.함정해제 + Math.round(sb * 2 * af),
+                 생존율: m.stats.생존율 + Math.round(sb * 2 * af), 협조성: m.stats.협조성 + Math.round(sb * af) } }
+    }))
+    setExpeditionNextAt(activeExpedition.nextAvailableAt)
+    setActiveExpedition(null)
+    setShowExpedition(false)
+    const equipMsg = result.equipReward ? `, 장비 [${result.equipReward.name}]` : ''
+    log(`💰 원정 보상: ${result.goldReward}G, 명성 +${result.fameReward}, 💎 ${result.crystalReward ?? 0}, 경험치 +${result.xpReward}${equipMsg}`)
+  }
+
   const freezeMercAge = (mercId: string) => {
     const merc = mercs.find(m => m.id === mercId)
     if (!merc) return
     if ((state.crystals ?? 0) < 3) { log('💎 수정 3개 필요 — 나이 동결 불가'); return }
-    const freezeMs = 30 * 5 * 60 * 1000  // 30 게임일 = 150분
+    const freezeMs = 7 * 24 * 60 * 60 * 1000  // 실제 7일
     setState(prev => ({ ...prev, crystals: (prev.crystals ?? 0) - 3 }))
     setMercs(prev => prev.map(m => m.id === mercId ? { ...m, ageLockedUntil: Date.now() + freezeMs } : m))
     log(`✨ ${merc.name}의 나이를 30일간 동결했습니다 (-3💎)`)
@@ -974,22 +1104,27 @@ function App() {
         questLines.push(`🌟 명성 +${quest.reward.fame}`)
         questLines.push(`⚠ 보상(${rewardGold}G) < 급여(${totalWages}G): 길드 수입 없음`)
       }
-      const xpGain = Math.round(quest.reward.exp * xpMultiplier(buildings.training))
+      const baseXpGain = Math.round(quest.reward.exp * xpMultiplier(buildings.training))
       nextMercs = nextMercs.map(m => {
         if (!aq.assignedMercIds.includes(m.id)) return m
+        const { xpMod } = getMercPassiveStats(m.passives ?? [])
+        const xpGain = Math.round(baseXpGain * (1 + xpMod))
         let exp = m.experience + xpGain, level = m.level, expToNext = m.expToNext
-        while (exp >= expToNext && level < 10) {
+        let updated = m
+        while (exp >= expToNext && level < 50) {
           exp -= expToNext; level++; expToNext = EXP_TO_NEXT(level)
-          questLines.push(`⬆ ${m.name} Lv${level - 1}→Lv${level} 레벨업!`)
+          questLines.push(`⬆ ${updated.name} Lv${level - 1}→Lv${level} 레벨업!`)
+          updated = applyGradeUp(updated, level, questLines)
         }
         const sb = level - m.level
-        return { ...m, level, experience: exp, expToNext,
+        const af = ageLevelFactor(m.age)
+        return { ...updated, level, experience: exp, expToNext,
           favorability: Math.min(100, m.favorability + 5),
           morale: Math.min(100, (m.morale ?? 70) + 10),
-          power: m.power + sb * 4,
-          trap_disarm: m.trap_disarm + sb * 2,
-          stats: { 공격력: m.stats.공격력 + sb * 2, 함정해제: m.stats.함정해제 + sb * 2,
-                   생존율: m.stats.생존율 + sb * 2, 협조성: m.stats.협조성 + sb } }
+          power: m.power + Math.round(sb * 4 * af),
+          trap_disarm: m.trap_disarm + Math.round(sb * 2 * af),
+          stats: { 공격력: m.stats.공격력 + Math.round(sb * 2 * af), 함정해제: m.stats.함정해제 + Math.round(sb * 2 * af),
+                   생존율: m.stats.생존율 + Math.round(sb * 2 * af), 협조성: m.stats.협조성 + Math.round(sb * af) } }
       })
       if (!wageFullyPaid && totalWages > 0) {
         nextMercs = nextMercs.map(m => {
@@ -1121,6 +1256,7 @@ function App() {
       questLog, gateArrivals, nextArrivalTime, nextMoraleDropAt,
       questPool, roomLevels, completedQuestIds,
       guildInventory, merchantState, activeDungeon,
+      activeExpedition, expeditionNextAt,
     }
     setSaveSlots(prev => {
       const next = [...prev]
@@ -1147,7 +1283,7 @@ function App() {
       return { questId: aq.questId, assignedMercIds: aq.assignedMercIds, completesAt: Date.now() + dur, durationMs: dur } as ActiveQuest
     }))
     setBuildings(data.buildings)
-    setState({ ...data.campaignState, crystals: data.campaignState.crystals ?? 5 })
+    setState({ ...data.campaignState, crystals: data.campaignState.crystals ?? 5, lastDayDate: data.campaignState.lastDayDate ?? new Date().toISOString().slice(0, 10) })
     setQuestLog(data.questLog)
     setGateArrivals(data.gateArrivals)
     setNextArrivalTime(data.nextArrivalTime ?? (Date.now() + ARRIVAL_INTERVAL_MS))
@@ -1159,6 +1295,8 @@ function App() {
     setGuildInventory(data.guildInventory ?? [])
     setMerchantState(data.merchantState ?? null)
     setActiveDungeon(data.activeDungeon ?? null)
+    setActiveExpedition(data.activeExpedition ?? null)
+    setExpeditionNextAt(data.expeditionNextAt ?? 0)
     setPendingAssign({})
     setSelectedMercId(null)
     setShowSaveModal(false)
@@ -1208,7 +1346,7 @@ function App() {
     log(`${BUILDING_INFO[id].name} ${isNew ? '건설' : `Lv${currentLv}→Lv${currentLv + 1} 업그레이드`}! -${cost}G`)
   }
 
-  // ── Auto day tick (5분 = 1일) ─────────────────────────────────────────────
+  // ── Real-calendar day advance ────────────────────────────────────────────
   const advanceDay = () => {
     let g = state.gold
     let morale = state.morale
@@ -1268,16 +1406,21 @@ function App() {
       let upd: Partial<Mercenary> = {}
       if (m.room === '훈련소' && trainMercs.some(t => t.id === m.id) && trainXP > 0) {
         const weakFactor = avgTrainPower > 0 ? Math.max(1, 2 - m.power / avgTrainPower) : 1
-        let exp = m.experience + Math.round(trainXP * weakFactor), level = m.level, expToNext = m.expToNext
-        while (exp >= expToNext && level < 10) {
+        const { xpMod } = getMercPassiveStats(m.passives ?? [])
+        let exp = m.experience + Math.round(trainXP * weakFactor * (1 + xpMod)), level = m.level, expToNext = m.expToNext
+        let trainUpd = m
+        while (exp >= expToNext && level < 50) {
           exp -= expToNext; level++; expToNext = EXP_TO_NEXT(level)
-          logs.push(`⬆ ${m.name} 훈련으로 Lv${level - 1}→Lv${level}!`)
+          logs.push(`⬆ ${trainUpd.name} 훈련으로 Lv${level - 1}→Lv${level}!`)
+          trainUpd = applyGradeUp(trainUpd, level, logs)
         }
         const sb = level - m.level
-        upd = { ...upd, experience: exp, level, expToNext,
-          power: m.power + sb * 4, trap_disarm: m.trap_disarm + sb * 2,
-          stats: { 공격력: m.stats.공격력 + sb * 2, 함정해제: m.stats.함정해제 + sb * 2,
-                   생존율: m.stats.생존율 + sb * 2, 협조성: m.stats.협조성 + sb } }
+        const af = ageLevelFactor(m.age)
+        upd = { ...upd, startingGrade: trainUpd.startingGrade, grade: trainUpd.grade, passives: trainUpd.passives,
+          experience: exp, level, expToNext,
+          power: m.power + Math.round(sb * 4 * af), trap_disarm: m.trap_disarm + Math.round(sb * 2 * af),
+          stats: { 공격력: m.stats.공격력 + Math.round(sb * 2 * af), 함정해제: m.stats.함정해제 + Math.round(sb * 2 * af),
+                   생존율: m.stats.생존율 + Math.round(sb * 2 * af), 협조성: m.stats.협조성 + Math.round(sb * af) } }
       }
       if (masterMercIds.has(m.id)) upd.favorability = Math.min(100, m.favorability + masterFav)
       return Object.keys(upd).length > 0 ? { ...m, ...upd } : m
@@ -1289,8 +1432,7 @@ function App() {
       nextMercs = nextMercs.map(m => {
         if (m.ageLockedUntil && m.ageLockedUntil > now) return m
         const newAge = m.age + 1
-        if (newAge === 55) logs.push(`👴 ${m.name} ${newAge}세 — 이제 전선에 내보낼 수 없습니다.`)
-        else if (newAge >= 38 && newAge % 4 === 0) logs.push(`🕰 ${m.name} ${newAge}세 — 노쇠로 전력이 저하됩니다.`)
+        if (newAge % 10 === 0) logs.push(`🕰 ${m.name} ${newAge}세`)
         return { ...m, age: newAge }
       })
     }
@@ -1303,7 +1445,7 @@ function App() {
 
     setMercs(nextMercs)
     setQuestPool(newQuestPool)
-    setState(prev => ({ ...prev, day: nextDay, gold: Math.max(0, g), fame: Math.max(0, fame), morale }))
+    setState(prev => ({ ...prev, day: nextDay, gold: Math.max(0, g), fame: Math.max(0, fame), morale, lastDayDate: new Date().toISOString().slice(0, 10) }))
     setQuestLog(prev => [...prev, ...logs].slice(-20))
   }
 
@@ -1342,12 +1484,36 @@ function App() {
   }, [])
 
   // ── Real-time quest completion ────────────────────────────────────────────
-  const completionDataRef = useRef({ mercs, state, questLog, buildings, roomLevels, activeQuests, gateArrivals, nextArrivalTime, nextMoraleDropAt, battleResults, completedQuestIds, activeDungeon })
-  completionDataRef.current = { mercs, state, questLog, buildings, roomLevels, activeQuests, gateArrivals, nextArrivalTime, nextMoraleDropAt, battleResults, completedQuestIds, activeDungeon }
+  const completionDataRef = useRef({ mercs, state, questLog, buildings, roomLevels, activeQuests, gateArrivals, nextArrivalTime, nextMoraleDropAt, battleResults, completedQuestIds, activeDungeon, activeExpedition })
+  completionDataRef.current = { mercs, state, questLog, buildings, roomLevels, activeQuests, gateArrivals, nextArrivalTime, nextMoraleDropAt, battleResults, completedQuestIds, activeDungeon, activeExpedition }
 
   const processCompletions = useCallback(() => {
     const now = Date.now()
-    const { mercs, state, questLog: _log, buildings, activeQuests, battleResults, activeDungeon: currentDungeon } = completionDataRef.current
+    const { mercs, state, questLog: _log, buildings, activeQuests, battleResults, activeDungeon: currentDungeon, activeExpedition: currentExpedition } = completionDataRef.current
+
+    // ── 원정 완료 처리 ─────────────────────────────────────
+    if (currentExpedition && !currentExpedition.result && currentExpedition.completesAt <= now) {
+      const assigned = currentExpedition.assignedMercIds.map(id => mercs.find(m => m.id === id)).filter(Boolean) as Mercenary[]
+      const partyPower = assigned.reduce((s, m) => s + effPower(m), 0)
+      const all = [...currentExpedition.npcScores, partyPower].sort((a, b) => b - a)
+      const rank = all.indexOf(partyPower) + 1
+      const total = all.length
+      const EXPEDITION_REWARDS = [
+        { gold: 600, fame: 60, xp: 500, crystals: 15, dropDiff: 120 },
+        { gold: 400, fame: 40, xp: 350, crystals: 10, dropDiff: 80  },
+        { gold: 250, fame: 25, xp: 250, crystals: 6,  dropDiff: 50  },
+        { gold: 150, fame: 15, xp: 150, crystals: 3,  dropDiff: 0   },
+        { gold: 80,  fame: 8,  xp: 100, crystals: 1,  dropDiff: 0   },
+      ]
+      const tier = Math.min(rank - 1, EXPEDITION_REWARDS.length - 1)
+      const reward = EXPEDITION_REWARDS[tier]
+      const equipReward = reward.dropDiff > 0 ? rollQuestDrop(reward.dropDiff) : null
+      const result: ExpeditionResult = { rank, total, goldReward: reward.gold, fameReward: reward.fame, xpReward: reward.xp, crystalReward: reward.crystals, equipReward }
+      setActiveExpedition({ ...currentExpedition, result })
+      setShowExpedition(true)
+      log(`⚔ 원정 완료! ${rank}위/${total}팀 — 보상 준비 완료`)
+    }
+
     const completed = activeQuests.filter(aq => aq.completesAt <= now)
     if (completed.length === 0) return
 
@@ -1388,21 +1554,26 @@ function App() {
           questLines.push(`🌟 명성 +${quest.reward.fame}`)
           questLines.push(`⚠ 보상(${rewardGold}G) < 급여(${totalWages}G): 길드 수입 없음`)
         }
-        const xpGain = Math.round(quest.reward.exp * xpMultiplier(buildings.training))
+        const baseXpGain2 = Math.round(quest.reward.exp * xpMultiplier(buildings.training))
         nextMercs = nextMercs.map(m => {
           if (!aq.assignedMercIds.includes(m.id)) return m
+          const { xpMod } = getMercPassiveStats(m.passives ?? [])
+          const xpGain = Math.round(baseXpGain2 * (1 + xpMod))
           let exp = m.experience + xpGain, level = m.level, expToNext = m.expToNext
-          while (exp >= expToNext && level < 10) {
+          let updated = m
+          while (exp >= expToNext && level < 50) {
             exp -= expToNext; level++; expToNext = EXP_TO_NEXT(level)
-            questLines.push(`⬆ ${m.name} Lv${level - 1}→Lv${level} 레벨업!`)
+            questLines.push(`⬆ ${updated.name} Lv${level - 1}→Lv${level} 레벨업!`)
+            updated = applyGradeUp(updated, level, questLines)
           }
           const sb = level - m.level
-          return { ...m, level, experience: exp, expToNext,
+          const af = ageLevelFactor(m.age)
+          return { ...updated, level, experience: exp, expToNext,
             favorability: Math.min(100, m.favorability + 5),
             morale: Math.min(100, (m.morale ?? 70) + 10),
-            power: m.power + sb * 4,
-            trap_disarm: m.trap_disarm + sb * 2,
-            stats: { 공격력: m.stats.공격력 + sb * 2, 함정해제: m.stats.함정해제 + sb * 2, 생존율: m.stats.생존율 + sb * 2, 협조성: m.stats.협조성 + sb } }
+            power: m.power + Math.round(sb * 4 * af),
+            trap_disarm: m.trap_disarm + Math.round(sb * 2 * af),
+            stats: { 공격력: m.stats.공격력 + Math.round(sb * 2 * af), 함정해제: m.stats.함정해제 + Math.round(sb * 2 * af), 생존율: m.stats.생존율 + Math.round(sb * 2 * af), 협조성: m.stats.협조성 + Math.round(sb * af) } }
         })
         if (!wageFullyPaid && totalWages > 0) {
           nextMercs = nextMercs.map(m => {
@@ -1547,6 +1718,13 @@ function App() {
         break
       }
     }
+
+    // ── 퇴단 예고 만료 체크 ─────────────────────────────────
+    const leavers = mercs.filter(m => m.leavingAt && m.leavingAt <= now)
+    if (leavers.length > 0) {
+      setMercs(prev => prev.filter(m => !leavers.some(l => l.id === m.id)))
+      for (const m of leavers) log(`👋 ${m.name}이(가) 길드를 떠났습니다.`)
+    }
   }, []) // empty deps - always reads from ref
 
   // 10초마다 퀘스트 완료 체크
@@ -1570,11 +1748,24 @@ function App() {
     }
   }, [questsCompletedToday]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 5분마다 하루 자동 경과
+  // 실제 캘린더 날짜가 바뀌면 하루 경과 처리
   const advanceDayRef = useRef(advanceDay)
   advanceDayRef.current = advanceDay
+  const lastDayDateRef = useRef(state.lastDayDate ?? new Date().toISOString().slice(0, 10))
+  lastDayDateRef.current = state.lastDayDate ?? new Date().toISOString().slice(0, 10)
   useEffect(() => {
-    const timer = setInterval(() => advanceDayRef.current(), 5 * 60 * 1000)
+    // 앱 마운트 시 날짜 변경 즉시 체크
+    const today = new Date().toISOString().slice(0, 10)
+    if (lastDayDateRef.current && today > lastDayDateRef.current) {
+      advanceDayRef.current()
+    }
+    // 1분마다 자정 체크
+    const timer = setInterval(() => {
+      const now = new Date().toISOString().slice(0, 10)
+      if (now > lastDayDateRef.current) {
+        advanceDayRef.current()
+      }
+    }, 60 * 1000)
     return () => clearInterval(timer)
   }, [])
 
@@ -1757,7 +1948,7 @@ function App() {
                     다음 →
                   </button>
                 ) : (
-                  <button onClick={() => { setShowTutorial(false); setTutorialStep(0) }}
+                  <button onClick={() => { setShowTutorial(false); setTutorialStep(0); setShowQuestModal(true) }}
                     className="rounded-xl px-6 py-2.5 text-sm font-bold text-white transition hover:brightness-110 active:scale-95"
                     style={{ background: 'linear-gradient(135deg,#b45309,#d97706)', boxShadow: '0 0 16px rgba(217,119,6,0.35)' }}>
                     🏰 길드 운영 시작!
@@ -1964,6 +2155,16 @@ function App() {
             }}>
             🔄 용병 ({ARRIVAL_REFRESH_COST}G)
           </button>
+          <button onClick={premiumRefreshArrivals}
+            className="rounded-xl px-3 py-1.5 text-sm font-semibold transition-all hover:brightness-115 active:scale-95"
+            style={{
+              background: (state.crystals ?? 0) >= PREMIUM_REFRESH_COST ? 'rgba(30,10,60,0.92)' : 'rgba(15,8,30,0.7)',
+              border: `1px solid ${(state.crystals ?? 0) >= PREMIUM_REFRESH_COST ? 'rgba(167,139,250,0.6)' : 'rgba(80,60,120,0.25)'}`,
+              color: (state.crystals ?? 0) >= PREMIUM_REFRESH_COST ? 'rgba(196,181,253,0.95)' : 'rgba(80,60,120,0.4)',
+              boxShadow: '0 2px 12px rgba(0,0,0,0.4)'
+            }}>
+            💎 고급 ({PREMIUM_REFRESH_COST}💎)
+          </button>
         </div>
 
         {/* ── 도착 용병 대기열 (하단 도로에 줄서기) ── */}
@@ -1990,8 +2191,10 @@ function App() {
               return (
                 <div key={m.id} className="flex-shrink-0 flex flex-col cursor-pointer hover:brightness-110 transition-all"
                   style={{ width: 72 }} onClick={() => setPreviewArrival(m)}>
+                  {/* 레벨 */}
+                  <div style={{ fontSize: 11, fontWeight: 800, color: 'rgba(220,185,100,0.95)', textAlign: 'center', width: '100%', padding: '2px 4px 0px' }}>Lv.{m.level}</div>
                   {/* 등급 (이름 위) */}
-                  <div style={{ fontSize: 12, fontWeight: 800, color: gradeColor, padding: '2px 4px 1px', textAlign: 'center', letterSpacing: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: gradeColor, padding: '1px 4px 1px', textAlign: 'center', letterSpacing: 1 }}>
                     {m.grade}
                   </div>
                   {/* 이름 */}
@@ -2107,13 +2310,13 @@ function App() {
                           <div key={m.id} draggable
                             onDragStart={e => { e.dataTransfer.setData('roomMercId', m.id); e.dataTransfer.setData('mercId', m.id); setDraggingMercId(m.id); setSelectedMercId(m.id) }}
                             onDragEnd={() => setDraggingMercId(null)}
-                            onClick={() => setSelectedMercId(isSel ? null : m.id)}
+                            onClick={() => { setSelectedMercId(isSel ? null : m.id); setRoomMercPreview(m) }}
                             role="button" tabIndex={0}
                             className="flex flex-col items-center transition-all select-none"
                             style={{ width: 72, cursor: 'grab', opacity: draggingMercId === m.id ? 0.35 : 1, borderRadius: 8,
                               background: isSel ? 'rgba(251,191,36,0.1)' : isPend ? 'rgba(99,102,241,0.08)' : 'transparent',
                               outline: isSel ? '1px solid rgba(251,191,36,0.45)' : 'none' }}>
-                            <div style={{ fontSize: 11, fontWeight: 800, color: 'rgba(220,185,100,0.95)', textAlign: 'center', width: '100%', padding: '2px 4px 1px' }}>Lv.{m.level}</div>
+                            <div style={{ fontSize: 11, fontWeight: 800, color: m.leavingAt ? 'rgba(239,68,68,0.9)' : 'rgba(220,185,100,0.95)', textAlign: 'center', width: '100%', padding: '2px 4px 1px' }}>{m.leavingAt ? '퇴단 예고' : `Lv.${m.level}`}</div>
                             <div style={{ width: '100%', padding: '0 4px 3px' }}>
                               <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 2, overflow: 'hidden' }}>
                                 <div style={{ height: '100%', width: `${Math.min(100, m.expToNext > 0 ? (m.experience / m.expToNext) * 100 : 0)}%`, background: 'rgba(200,160,50,0.85)', borderRadius: 2 }} />
@@ -2218,18 +2421,13 @@ function App() {
                         <div key={m.id} draggable
                           onDragStart={e => { e.dataTransfer.setData('roomMercId', m.id); e.dataTransfer.setData('mercId', m.id); setDraggingMercId(m.id); setSelectedMercId(m.id) }}
                           onDragEnd={() => setDraggingMercId(null)}
-                          onClick={() => setSelectedMercId(isSel ? null : m.id)}
+                          onClick={() => { setSelectedMercId(isSel ? null : m.id); setRoomMercPreview(m) }}
                           role="button" tabIndex={0}
                           className="flex flex-col items-center transition-all select-none"
                           style={{ width: 72, cursor: 'grab', opacity: draggingMercId === m.id ? 0.35 : 1, borderRadius: 8,
                             background: isSel ? 'rgba(251,191,36,0.1)' : isPend ? 'rgba(99,102,241,0.08)' : 'transparent',
                             outline: isSel ? '1px solid rgba(251,191,36,0.45)' : 'none' }}>
-                          <div style={{ fontSize: 11, fontWeight: 800, color: 'rgba(220,185,100,0.95)', textAlign: 'center', width: '100%', padding: '2px 4px 1px' }}>Lv.{m.level}</div>
-                          <div style={{ width: '100%', padding: '0 4px 3px' }}>
-                            <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 2, overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: `${Math.min(100, m.expToNext > 0 ? (m.experience / m.expToNext) * 100 : 0)}%`, background: 'rgba(200,160,50,0.85)', borderRadius: 2 }} />
-                            </div>
-                          </div>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: m.leavingAt ? 'rgba(239,68,68,0.9)' : 'rgba(220,185,100,0.95)', textAlign: 'center', width: '100%', padding: '2px 4px 1px' }}>{m.leavingAt ? '퇴단 예고' : `Lv.${m.level}`}</div>
                           <p style={{ fontSize: 11, color: '#ede4cc', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%', padding: '0 4px', textAlign: 'center' }}>{m.name}</p>
                           <div style={{ fontSize: 10, display: 'flex', gap: 4, padding: '1px 4px 3px', width: '100%', justifyContent: 'center', color: 'rgba(200,200,200,0.8)' }}>
                             <span>{ELEMENT_ICON[m.element]}</span>
@@ -2298,18 +2496,13 @@ function App() {
                         <div key={m.id} draggable
                           onDragStart={e => { e.dataTransfer.setData('roomMercId', m.id); e.dataTransfer.setData('mercId', m.id); setDraggingMercId(m.id); setSelectedMercId(m.id) }}
                           onDragEnd={() => setDraggingMercId(null)}
-                          onClick={() => setSelectedMercId(isSel ? null : m.id)}
+                          onClick={() => { setSelectedMercId(isSel ? null : m.id); setRoomMercPreview(m) }}
                           role="button" tabIndex={0}
                           className="flex flex-col items-center transition-all select-none"
                           style={{ width: 72, cursor: 'grab', opacity: draggingMercId === m.id ? 0.35 : 1, borderRadius: 8,
                             background: isSel ? 'rgba(251,191,36,0.1)' : isPend ? 'rgba(99,102,241,0.08)' : 'transparent',
                             outline: isSel ? '1px solid rgba(251,191,36,0.45)' : 'none' }}>
-                          <div style={{ fontSize: 11, fontWeight: 800, color: 'rgba(220,185,100,0.95)', textAlign: 'center', width: '100%', padding: '2px 4px 1px' }}>Lv.{m.level}</div>
-                          <div style={{ width: '100%', padding: '0 4px 3px' }}>
-                            <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 2, overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: `${Math.min(100, m.expToNext > 0 ? (m.experience / m.expToNext) * 100 : 0)}%`, background: 'rgba(200,160,50,0.85)', borderRadius: 2 }} />
-                            </div>
-                          </div>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: m.leavingAt ? 'rgba(239,68,68,0.9)' : 'rgba(220,185,100,0.95)', textAlign: 'center', width: '100%', padding: '2px 4px 1px' }}>{m.leavingAt ? '퇴단 예고' : `Lv.${m.level}`}</div>
                           <p style={{ fontSize: 11, color: '#ede4cc', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%', padding: '0 4px', textAlign: 'center' }}>{m.name}</p>
                           <div style={{ fontSize: 10, display: 'flex', gap: 4, padding: '1px 4px 3px', width: '100%', justifyContent: 'center', color: 'rgba(200,200,200,0.8)' }}>
                             <span>{ELEMENT_ICON[m.element]}</span>
@@ -2394,7 +2587,7 @@ function App() {
                               <div key={m.id} draggable
                                 onDragStart={e => { e.dataTransfer.setData('roomMercId', m.id); e.dataTransfer.setData('mercId', m.id); setDraggingMercId(m.id); setSelectedMercId(m.id) }}
                                 onDragEnd={() => setDraggingMercId(null)}
-                                onClick={() => setSelectedMercId(isSel ? null : m.id)}
+                                onClick={() => { setSelectedMercId(isSel ? null : m.id); setRoomMercPreview(m) }}
                                 role="button" tabIndex={0}
                                 className="flex flex-col items-center gap-0.5 rounded-lg px-2 py-2 transition-all select-none"
                                 style={{
@@ -2519,7 +2712,7 @@ function App() {
                           <div key={m.id} draggable
                             onDragStart={e => { e.dataTransfer.setData('roomMercId', m.id); e.dataTransfer.setData('mercId', m.id); setDraggingMercId(m.id); setSelectedMercId(m.id) }}
                             onDragEnd={() => setDraggingMercId(null)}
-                            onClick={() => setSelectedMercId(isSel ? null : m.id)}
+                            onClick={() => { setSelectedMercId(isSel ? null : m.id); setRoomMercPreview(m) }}
                             role="button" tabIndex={0}
                             className="flex flex-col items-center gap-0.5 rounded-lg px-2 py-2 transition-all select-none"
                             style={{
@@ -2622,6 +2815,130 @@ function App() {
                   }}>
                   ⚔ 고용
                 </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── Room Merc Detail Modal ──────────────────────── */}
+      {roomMercPreview && (() => {
+        const m = roomMercPreview
+        const passiveStats = getMercPassiveStats(m.passives ?? [])
+        const slotLabel: Record<string, string> = { weapon: '무기', head: '머리', body: '몸통', accessory: '장신구' }
+        const activeSynergies = PASSIVE_SYNERGIES.filter(s =>
+          s.passiveIds.every(pid => (m.passives ?? []).includes(pid))
+        )
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75"
+            onClick={() => setRoomMercPreview(null)}>
+            <div className="rounded-2xl p-5 flex flex-col gap-3 overflow-y-auto"
+              style={{ width: 340, maxHeight: '85vh', background: '#0d0b1a',
+                border: `2px solid ${m.grade === 'S' ? 'rgba(217,70,239,0.6)' : m.grade === 'A' ? 'rgba(251,191,36,0.55)' : m.grade === 'B' ? 'rgba(52,211,153,0.5)' : 'rgba(100,70,180,0.4)'}`,
+                boxShadow: m.grade === 'S' ? '0 0 30px rgba(217,70,239,0.2)' : m.grade === 'A' ? '0 0 25px rgba(251,191,36,0.15)' : '0 8px 30px rgba(0,0,0,0.6)' }}
+              onClick={e => e.stopPropagation()}>
+              {/* 헤더 */}
+              <div className="flex items-center gap-3">
+                <MercAvatar m={m} size={64} />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-base font-bold text-white">{m.name}</span>
+                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded text-white ${gradeBg(m.grade)}`}>{GRADE_STARS[m.grade] ?? m.grade}</span>
+                    <span className={`text-sm font-bold ${ELEMENT_COLOR[m.element]}`}>{ELEMENT_ICON[m.element]}</span>
+                  </div>
+                  <p className="text-xs mt-0.5" style={{ color: 'rgba(160,120,60,0.85)' }}>Lv{m.level} · {CLASS_ICONS[m.class]} {m.class} · {m.race} · {m.age}세</p>
+                  {m.leavingAt ? (
+                    <p className="text-xs mt-0.5 font-bold text-red-400">📜 퇴단 예고 — {Math.max(0, Math.ceil((m.leavingAt - Date.now()) / 86400000))}일 후 떠남</p>
+                  ) : (
+                    <p className="text-xs mt-0.5" style={{ color: 'rgba(120,180,140,0.7)' }}>{RACE_BONUS_DESC[m.race]}</p>
+                  )}
+                </div>
+                <button onClick={() => setRoomMercPreview(null)} className="text-slate-500 hover:text-white text-xl leading-none self-start">×</button>
+              </div>
+              {/* 상태바 */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs mb-0.5">
+                  <span style={{ color: 'rgba(130,130,150,0.7)' }}>컨디션</span>
+                  <span className={m.condition >= 70 ? 'text-emerald-400' : m.condition >= 40 ? 'text-amber-400' : 'text-red-400'}>{m.condition}%</span>
+                </div>
+                {condBar(m.condition)}
+                <div className="flex justify-between text-xs mb-0.5 mt-1.5">
+                  <span style={{ color: 'rgba(130,130,150,0.7)' }}>사기</span>
+                  <span className={(m.morale ?? 70) >= 70 ? 'text-indigo-400' : (m.morale ?? 70) >= 40 ? 'text-amber-400' : 'text-red-400'}>{m.morale ?? 70}%</span>
+                </div>
+                {moraleBar(m.morale ?? 70)}
+                <div className="flex justify-between text-xs mt-1.5">
+                  <span style={{ color: 'rgba(130,130,150,0.7)' }}>호감도</span>
+                  <span className={m.favorability >= 61 ? 'text-rose-400' : m.favorability >= 41 ? 'text-slate-300' : 'text-slate-500'}>{favEmoji(m.favorability)} {m.favorability}</span>
+                </div>
+              </div>
+              {/* 능력치 그리드 */}
+              <div className="grid grid-cols-2 gap-1.5 text-sm">
+                {[
+                  { l: '실효 전력', v: effPower(m), c: 'text-cyan-300' },
+                  { l: '공격력',   v: m.stats.공격력,    c: 'text-red-300' },
+                  { l: '함정해제', v: m.trap_disarm,     c: 'text-purple-300' },
+                  { l: '생존율',   v: m.stats.생존율,    c: 'text-emerald-300' },
+                  { l: 'HP',       v: `${m.hp}/100`,     c: m.hp >= 70 ? 'text-emerald-400' : m.hp >= 40 ? 'text-amber-400' : 'text-red-400' },
+                  { l: '협조성',   v: m.traits.cooperation, c: 'text-green-300' },
+                ].map(({ l, v, c }) => (
+                  <div key={l} className="rounded-lg px-3 py-1.5" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    <p className="text-slate-500 mb-0.5" style={{ fontSize: 11 }}>{l}</p>
+                    <p className={`font-bold text-sm ${c}`}>{v}</p>
+                  </div>
+                ))}
+              </div>
+              {/* 장비 */}
+              <div>
+                <p className="text-xs font-bold mb-1.5" style={{ color: 'rgba(180,160,220,0.7)' }}>장비</p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {(['weapon', 'head', 'body', 'accessory'] as const).map(slot => {
+                    const item = m.equipment[slot] ? findEquip(m.equipment[slot]!) : null
+                    return (
+                      <div key={slot} className="rounded-lg px-2 py-1.5" style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${item ? 'rgba(180,140,60,0.35)' : 'rgba(255,255,255,0.06)'}` }}>
+                        <p className="text-slate-600 mb-0.5" style={{ fontSize: 10 }}>{slotLabel[slot]}</p>
+                        {item ? (
+                          <p className="text-xs font-bold" style={{ color: item.grade === 'S' ? '#e879f9' : item.grade === 'A' ? '#fbbf24' : item.grade === 'B' ? '#34d399' : item.grade === 'C' ? '#38bdf8' : '#94a3b8' }}>{item.name}</p>
+                        ) : (
+                          <p className="text-xs text-slate-600">없음</p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              {/* 패시브 */}
+              {(m.passives ?? []).length > 0 && (
+                <div>
+                  <p className="text-xs font-bold mb-1.5" style={{ color: 'rgba(180,160,220,0.7)' }}>패시브</p>
+                  <div className="space-y-1">
+                    {(m.passives ?? []).map(pid => {
+                      const p = findPassive(pid)
+                      if (!p) return null
+                      return (
+                        <div key={pid} className="rounded-lg px-2 py-1.5" style={{ background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.2)' }}>
+                          <p className="text-xs font-bold text-purple-300">{p.name}</p>
+                          <p className="text-xs mt-0.5" style={{ color: 'rgba(160,140,200,0.6)' }}>{p.desc}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {activeSynergies.length > 0 && (
+                    <div className="mt-1.5 space-y-1">
+                      <p className="text-xs font-bold" style={{ color: 'rgba(250,200,80,0.7)' }}>✦ 시너지</p>
+                      {activeSynergies.map((s, i) => (
+                        <div key={i} className="rounded-lg px-2 py-1.5" style={{ background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                          <p className="text-xs text-amber-300">{s.desc}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* XP */}
+              <div className="rounded-lg px-3 py-2 flex justify-between items-center" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <span className="text-xs text-slate-500">경험치</span>
+                <span className="text-xs text-amber-300 font-bold">{m.experience} / {m.expToNext}</span>
               </div>
             </div>
           </div>
@@ -2763,7 +3080,7 @@ function App() {
                         const assigned = pendingAssign[quest.id] ?? []
                         const filledSlots = assigned.filter(Boolean)
                         const canLaunch = filledSlots.length >= 1
-                        const totalAssignedEff = filledSlots.map(id => mercs.find(m => m.id === id)).filter(Boolean).reduce((s, m) => s + effPower(m!), 0)
+                        const totalAssignedEff = filledSlots.map(id => mercs.find(m => m.id === id)).filter(Boolean).reduce((s, m) => s + effPowerVs(m!, quest.element), 0)
                         const powerRatio = Math.min(1, totalAssignedEff / quest.difficulty)
                         const successRate = filledSlots.length > 0 ? calcSuccessRate(quest, filledSlots, mercs) : 0
                         const hasPending = filledSlots.length > 0
@@ -3013,6 +3330,29 @@ function App() {
                     던전 진행 중: {activeDungeon.name} ({activeDungeon.currentFloor}/{activeDungeon.maxFloor}층)
                   </button>
                 )}
+                {/* 정기 원정 버튼 */}
+                {(() => {
+                  const now = Date.now()
+                  const onExpedition = activeExpedition && !activeExpedition.result
+                  const hasResult = activeExpedition?.result
+                  const onCooldown = !activeExpedition && expeditionNextAt > now
+                  const cooldownMin = onCooldown ? Math.ceil((expeditionNextAt - now) / 60000) : 0
+                  return (
+                    <button
+                      onClick={() => setShowExpedition(true)}
+                      className="w-full text-sm px-3 py-1.5 rounded-xl font-bold"
+                      style={{
+                        background: hasResult ? 'rgba(34,197,94,0.2)' : onExpedition ? 'rgba(139,92,246,0.15)' : onCooldown ? 'rgba(60,60,70,0.4)' : 'rgba(88,28,135,0.2)',
+                        color: hasResult ? '#4ade80' : onExpedition ? '#c4b5fd' : onCooldown ? 'rgba(130,130,150,0.6)' : '#a78bfa',
+                        border: `1px solid ${hasResult ? 'rgba(34,197,94,0.35)' : onExpedition ? 'rgba(139,92,246,0.3)' : onCooldown ? 'rgba(80,80,90,0.3)' : 'rgba(139,92,246,0.25)'}`,
+                        cursor: onCooldown ? 'default' : 'pointer',
+                      }}
+                      disabled={onCooldown}
+                    >
+                      {hasResult ? '⚔ 원정 완료 — 보상 수령' : onExpedition ? `⚔ 원정 중 (${activeExpedition.assignedMercIds.length}명 파견)` : onCooldown ? `⚔ 원정 쿨다운 (${cooldownMin}분)` : '⚔ 정기 원정 출발'}
+                    </button>
+                  )
+                })()}
                 {(Object.keys(BUILDING_INFO) as Array<keyof typeof BUILDING_INFO>).map(id => {
                   const info = BUILDING_INFO[id]
                   const currentLv = buildings[id]
@@ -3161,14 +3501,14 @@ function App() {
                     {/* Stats grid */}
                     <div className="grid grid-cols-2 gap-0 text-sm" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                       {[
-                        { l: '실효 전력', v: selectedMercDetail.age >= 55 ? '전투 불가' : effPower(selectedMercDetail), c: selectedMercDetail.age >= 55 ? 'text-slate-500' : 'text-cyan-300', bold: true },
+                        { l: '실효 전력', v: effPower(selectedMercDetail), c: 'text-cyan-300', bold: true },
                         { l: '공격력', v: Math.round(selectedMercDetail.stats.공격력 * (0.4 + 0.6 * selectedMercDetail.condition / 100)), c: 'text-red-300', bold: false },
                         { l: '함정해제', v: selectedMercDetail.trap_disarm, c: selectedMercDetail.trap_disarm >= 30 ? 'text-purple-300' : 'text-slate-400', bold: false },
                         { l: '생존율', v: Math.round(selectedMercDetail.stats.생존율 * (0.4 + 0.6 * selectedMercDetail.condition / 100)), c: 'text-emerald-300', bold: false },
                         { l: '경험치', v: `${selectedMercDetail.experience}/${selectedMercDetail.expToNext}`, c: 'text-amber-300', bold: false },
                         { l: '미션 급여', v: `${MISSION_PAY_PER_DAY[selectedMercDetail.grade] ?? 4}G/일`, c: 'text-amber-300', bold: false },
                         { l: '사망 보상금', v: `${selectedMercDetail.deathCost}G`, c: 'text-red-400', bold: false },
-                        { l: '나이', v: `${selectedMercDetail.age}세${selectedMercDetail.age >= 55 ? ' (노쇠)' : selectedMercDetail.age >= 38 ? ' (전력↓)' : ''}`, c: selectedMercDetail.age >= 55 ? 'text-slate-500' : selectedMercDetail.age >= 38 ? 'text-orange-400' : 'text-slate-300', bold: false },
+                        { l: '나이', v: `${selectedMercDetail.age}세`, c: 'text-slate-300', bold: false },
                       ].map(({ l, v, c, bold }, idx, arr) => (
                         <div key={l} className="flex justify-between items-center px-3 py-1.5"
                           style={{
@@ -3211,11 +3551,48 @@ function App() {
                     <div className="mt-3">
                       <StatRadar mercenary={selectedMercDetail} />
                     </div>
+                    {/* 패시브 섹션 */}
+                    {(selectedMercDetail.passives ?? []).length > 0 && (() => {
+                      const passiveStats = getMercPassiveStats(selectedMercDetail.passives ?? [])
+                      const idSet = new Set(selectedMercDetail.passives ?? [])
+                      const activeSynergies = PASSIVE_SYNERGIES.filter(s => idSet.has(s.passiveIds[0]) && idSet.has(s.passiveIds[1]))
+                      return (
+                        <div className="mt-3 border-t pt-3" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+                          <div className="flex items-center gap-1 mb-2">
+                            <span className="text-xs font-bold" style={{ color: 'rgba(200,160,255,0.8)' }}>✦ 패시브</span>
+                            <span className="text-xs" style={{ color: 'rgba(130,130,150,0.6)' }}>{selectedMercDetail.passives.length}/{GRADE_PASSIVE_SLOTS[selectedMercDetail.grade] ?? 1}</span>
+                          </div>
+                          <div className="space-y-1">
+                            {(selectedMercDetail.passives ?? []).map(pid => {
+                              const p = findPassive(pid)
+                              if (!p) return null
+                              return (
+                                <div key={pid} className="flex justify-between items-center px-2 py-1 rounded text-xs"
+                                  style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.2)' }}>
+                                  <span style={{ color: '#c4b5fd' }}>{p.name}</span>
+                                  <span style={{ color: 'rgba(160,160,180,0.7)' }}>{p.desc}</span>
+                                </div>
+                              )
+                            })}
+                            {activeSynergies.map(syn => (
+                              <div key={syn.passiveIds.join('+')} className="flex items-center gap-1 px-2 py-1 rounded text-xs"
+                                style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                                <span style={{ color: '#fbbf24' }}>⚡ 시너지</span>
+                                <span style={{ color: 'rgba(200,170,100,0.8)' }}>{syn.desc}</span>
+                              </div>
+                            ))}
+                          </div>
+                          {passiveStats.xpMod > 0 && (
+                            <p className="text-xs mt-1" style={{ color: 'rgba(180,160,120,0.6)' }}>경험치 획득 +{Math.round(passiveStats.xpMod * 100)}%</p>
+                          )}
+                        </div>
+                      )
+                    })()}
                     {/* 나이 동결 버튼 */}
                     {selectedMercDetail.status !== '영혼' && (() => {
                       const frozen = selectedMercDetail.ageLockedUntil && selectedMercDetail.ageLockedUntil > Date.now()
                       const remainMs = frozen ? selectedMercDetail.ageLockedUntil! - Date.now() : 0
-                      const remainDays = Math.ceil(remainMs / (5 * 60 * 1000))
+                      const remainDays = Math.ceil(remainMs / (24 * 60 * 60 * 1000))
                       return (
                         <button
                           onClick={() => !frozen && freezeMercAge(selectedMercDetail.id)}
@@ -3521,6 +3898,23 @@ function App() {
         )
       })()}
 
+      {/* ── Expedition Panel ─────────────────────────── */}
+      {showExpedition && activeExpedition && (
+        <ExpeditionPanel
+          expedition={activeExpedition}
+          mercs={mercs}
+          onClose={() => setShowExpedition(false)}
+          onClaim={claimExpedition}
+        />
+      )}
+      {/* ── Expedition Launch Modal (메르크 선택) ──────── */}
+      {showExpedition && !activeExpedition && (
+        <ExpeditionLaunchModal
+          mercs={mercs.filter(m => m.status === '대기중')}
+          onLaunch={launchExpedition}
+          onClose={() => setShowExpedition(false)}
+        />
+      )}
       {/* ── Story Modal ──────────────────────────────── */}
       {showStoryModal && storyContent && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/95" style={{ zIndex: 70 }}>

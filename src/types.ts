@@ -82,6 +82,29 @@ export interface Traits {
   synergy_factor: number
 }
 
+export interface MercPassive {
+  id: string
+  name: string
+  desc: string
+  powerBonus: number
+  atkBonus: number
+  trapBonus: number
+  survBonus: number
+  hpBonus: number
+  deathRiskMod: number  // e.g. -0.05 = death risk ×0.95
+  xpMod: number         // e.g. 0.15 = XP +15%
+}
+
+export interface PassiveSynergy {
+  passiveIds: [string, string]
+  desc: string
+  powerBonus: number
+  atkBonus: number
+  trapBonus: number
+  survBonus: number
+  deathRiskMod: number
+}
+
 export interface Mercenary {
   id: string
   name: string
@@ -90,6 +113,8 @@ export interface Mercenary {
   race: Race
   class: MercenaryClass
   grade: MercenaryGrade
+  startingGrade: MercenaryGrade  // original grade at hire
+  passives: string[]             // MercPassive IDs
   power: number
   element: '불' | '얼음' | '자연' | '암흑' | '빛'
   trap_disarm: number
@@ -118,6 +143,7 @@ export interface Mercenary {
   level: number
   experience: number
   expToNext: number
+  leavingAt?: number   // timestamp: merc will auto-leave after this time
 }
 
 export interface Quest {
@@ -166,12 +192,33 @@ export interface CampaignState {
   fame: number
   morale: number
   crystals: number
+  lastDayDate?: string   // ISO date "YYYY-MM-DD" — last real-calendar day processed
 }
 
 export interface MerchantState {
   active: boolean
   stock: Equipment[]
   departsAt: number
+}
+
+export interface ExpeditionResult {
+  rank: number
+  total: number
+  goldReward: number
+  fameReward: number
+  xpReward: number
+  crystalReward: number
+  equipReward: Equipment | null
+}
+
+export interface ActiveExpedition {
+  id: string
+  assignedMercIds: string[]
+  startedAt: number
+  completesAt: number
+  npcScores: number[]     // simulated competitors' power
+  result?: ExpeditionResult
+  nextAvailableAt: number // when next expedition can be launched
 }
 
 export interface SaveSlotData {
@@ -192,4 +239,6 @@ export interface SaveSlotData {
   guildInventory: Equipment[]
   merchantState: MerchantState | null
   activeDungeon: ActiveDungeon | null
+  activeExpedition: ActiveExpedition | null
+  expeditionNextAt: number   // timestamp when expedition is available again
 }
